@@ -20,6 +20,9 @@ delete config.nsis.include;
 config.portable.artifactName = 'Hydra-Personal-Backup-0.3.0-hydra-${version}-windows-x64-portable.${ext}';
 config.extraResources.push({ from: 'Personal-Backup-README.md', to: 'Personal-Backup-README.md' });
 config.files.push('!.personal-backup-originals/**', '!personal-backup-builder.cjs');
+// This static link input is already compiled into classic-level's addon. The
+// discovered 37.5 MiB archive is not loaded by Node at runtime.
+config.files.push('!node_modules/classic-level/build/Release/leveldb.lib');
 config.publish = null;
 config.win.signAndEditExecutable = false;
 module.exports = config;
