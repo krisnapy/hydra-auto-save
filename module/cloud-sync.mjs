@@ -1,6 +1,6 @@
 import * as fs from 'node:fs/promises';
 import path from 'node:path';
-import { OneDrive, validClientId, cloudName } from './onedrive.mjs';
+import { OneDrive, validClientId, cloudName, DEFAULT_CLIENT_ID } from './onedrive.mjs';
 import { packVersion, importVersion } from './cloud-bundle.mjs';
 import { atomicJson, digest, safePath } from './engine.mjs';
 
@@ -19,6 +19,7 @@ export class CloudSync {
     try { this.state = JSON.parse(await fs.readFile(this.file, 'utf8')); }
     catch (error) { if (error.code !== 'ENOENT') throw new Error('Pengaturan OneDrive rusak; data dipertahankan.'); this.state = { clientId: '', driveId: '', jobs: [] }; }
     if (!Array.isArray(this.state.jobs) || this.state.jobs.length > 1200 || this.state.jobs.some(job => !cloudName(job.name) || typeof job.driveId !== 'string' || !job.driveId || typeof job.gameId !== 'string' || !Number.isSafeInteger(job.bytes) || job.bytes < 0 || !Number.isFinite(job.nextAt) || !Number.isSafeInteger(job.attempts) || job.attempts < 0)) throw new Error('Antrean cloud tidak valid.');
+    this.state.clientId ||= DEFAULT_CLIENT_ID;
     this.provider = new OneDrive({ clientId: this.state.clientId, loadTokens: () => this.vault.load(), saveTokens: value => this.vault.save(value), fetcher: this.fetcher });
     this.connected = Boolean(await this.vault.load());
     if (this.connected) this.startTimer();

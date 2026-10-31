@@ -44,12 +44,13 @@ export function PersonalOneDrive({ gameId, onDownloaded }: { gameId?: string; on
   if (!cloud) return error ? <p role="alert" className="personal-backup__error">OneDrive: {error}</p> : null;
   return <div className="personal-backup__onedrive" aria-label="OneDrive langsung">
     <div className="personal-backup__history-heading"><h4>OneDrive</h4><span>{cloud.connected ? "Terhubung" : cloud.login ? "Menunggu login" : "Belum terhubung"}</span></div>
-    {!cloud.connected && !cloud.login && <details open={!gameId}><summary>Atur koneksi OneDrive</summary>
+    {!cloud.connected && !cloud.login && <>
+      <button disabled={busy || !(clientId ?? cloud.clientId)} onClick={() => void command("login", { clientId: clientId ?? cloud.clientId })}>Hubungkan OneDrive</button>
+      <details><summary>Pengaturan koneksi OneDrive</summary>
       <p>Hubungkan akun pribadi Microsoft untuk mengunggah backup langsung dari Hydra.</p>
       <label>Application (client) ID <input aria-label="Microsoft client ID" value={clientId ?? cloud.clientId} disabled={busy} placeholder="ID pendaftaran aplikasi Microsoft" onChange={event => setClientId(event.target.value)} /></label>
-      <button disabled={busy || !(clientId ?? cloud.clientId)} onClick={() => void command("login", { clientId: clientId ?? cloud.clientId })}>Hubungkan OneDrive</button>
-      <p className="personal-backup__muted">Pengaturan awal proyek: gunakan public client dengan izin Files.ReadWrite.AppFolder. Tidak memerlukan client secret.</p>
-    </details>}
+      <p className="personal-backup__muted">Client ID bawaan sudah disediakan. Ubah hanya untuk memakai pendaftaran aplikasi Microsoft Anda sendiri.</p>
+    </details></>}
     {cloud.login && <>
       <p>Masukkan kode <strong className="personal-backup__login-code">{cloud.login.userCode}</strong> di microsoft.com/devicelogin. Gunakan hanya kode yang Anda mulai dari Hydra ini.</p>
       <p>Berlaku sampai {new Date(cloud.login.expiresAt).toLocaleTimeString()}. Status login diperiksa otomatis.</p>

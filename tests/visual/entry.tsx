@@ -30,7 +30,7 @@ switch (scenario) {
   default: throw new Error(`Skenario tidak dikenal: ${scenario}`);
 }
 current.activity = [{ at, gameId, status: current.status.status, detail: current.status.detail ?? "Data contoh untuk pengujian tampilan." }];
-let cloudState = { provider: "onedrive", clientId: "", connected: false, login: null as null | { userCode: string; expiresAt: number; url: string }, pending: 0, uploaded: 0, uploading: false, error: "", versions: [] as Array<{ name: string; modifiedAt: string; size: number }> };
+let cloudState = { provider: "onedrive", clientId: "11111111-2222-3333-4444-555555555555", connected: false, login: null as null | { userCode: string; expiresAt: number; url: string }, pending: 0, uploaded: 0, uploading: false, error: "", versions: [] as Array<{ name: string; modifiedAt: string; size: number }> };
 const calls: Record<string, unknown>[] = [];
 const snapshot = () => structuredClone(current);
 const invoke = async (request: Record<string, unknown>) => {

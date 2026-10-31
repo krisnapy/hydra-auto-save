@@ -1,4 +1,6 @@
 import { BUNDLE_LIMIT } from './cloud-bundle.mjs';
+// Public application identifier; never embed a client secret in desktop builds.
+export const DEFAULT_CLIENT_ID = 'c7ff4898-7121-43f1-9f1c-23d8158899d7';
 const AUTH = 'https://login.microsoftonline.com/consumers/oauth2/v2.0/';
 const GRAPH = 'https://graph.microsoft.com/v1.0/';
 const SCOPE = 'https://graph.microsoft.com/Files.ReadWrite.AppFolder offline_access';

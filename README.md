@@ -15,7 +15,7 @@ Paket sebelumnya **0.2.3 terverifikasi**: [Installer](https://github.com/krisnap
 
 Node.js dan Ludusavi tidak perlu dipasang terpisah. Paket menyertakan runtime dan Ludusavi. Artifact berlaku 30 hari. Publikasi rilis publik dilewati selama repository privat; checksum dan pengujian Windows tetap berjalan.
 
-0.3.0 menambahkan OneDrive pribadi langsung: login Microsoft berkode, antrean unggahan yang tersimpan, serta unduhan versi ke riwayat lokal sebelum pemulihan manual. Pendaftaran aplikasi Microsoft dan client ID diperlukan untuk mengaktifkan login. [Panduan OneDrive dan batas tahap awal](docs/onedrive.md). Pengujian akun Microsoft nyata belum dilakukan; jangan menganggap hasil tes simulasi sebagai bukti unggahan nyata.
+0.3.0 menambahkan OneDrive pribadi langsung: login Microsoft berkode, antrean unggahan yang tersimpan, serta unduhan versi ke riwayat lokal sebelum pemulihan manual. Client ID proyek sudah disediakan; pengguna cukup memilih Hubungkan OneDrive. [Panduan OneDrive dan batas tahap awal](docs/onedrive.md). Pengujian akun Microsoft nyata belum dilakukan; jangan menganggap hasil tes simulasi sebagai bukti unggahan nyata.
 
 0.2.3 memperbarui bagian backup di halaman game: lokasi save di kiri, kartu status/tindakan di kanan, riwayat dibuka melalui Pulihkan, dan pilihan lanjutan masuk menu ⋯. Pada jendela sempit tampilan menjadi satu kolom. Proses backup, konfirmasi pemulihan dan backup pengaman tetap menggunakan layanan yang sama. Navigasi serta tampilan halaman lain Hydra tetap mengikuti launcher.
 

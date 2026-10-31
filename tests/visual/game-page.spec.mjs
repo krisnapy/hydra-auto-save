@@ -107,7 +107,7 @@ test('hasil backup otomatis langsung menyegarkan jumlah versi', async ({ page })
 test('OneDrive login displays only the user code and can be cancelled', async ({ page }) => {
   await visit(page, 'complete');
   const cloud = page.getByLabel('OneDrive langsung');
-  await cloud.getByText('Atur koneksi OneDrive').click();
+  await cloud.getByText('Pengaturan koneksi OneDrive').click();
   await cloud.getByLabel('Microsoft client ID').fill('11111111-2222-3333-4444-555555555555');
   await cloud.getByRole('button', { name: 'Hubungkan OneDrive' }).click();
   await expect(cloud.getByText('ABCD-EFGH', { exact: true })).toBeVisible();

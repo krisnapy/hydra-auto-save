@@ -6,7 +6,7 @@ Status: rencana bertahap; tanggal rilis belum ditetapkan. Target awal Windows, H
 |---|---|---|
 | 0.1.5 | Backup lokal/cloud-folder, riwayat, cache verifikasi | Dirilis |
 | 0.2.0 | Pemantauan save, debounce/retry, low space, journal terputus, panduan awal | Dirilis; uji game/cloud nyata masih diperlukan |
-| 0.3.0 | OneDrive pribadi, OAuth berkode, antrean unggahan, unduh ke riwayat dan pemulihan manual | Implementasi awal; uji akun nyata menunggu client ID |
+| 0.3.0 | OneDrive pribadi, OAuth berkode, antrean unggahan, unduh ke riwayat dan pemulihan manual | Implementasi awal; uji akun nyata masih diperlukan |
 | 0.4 | Pemetaan game/perangkat dan konflik progres antar-PC | Usulan |
 | 0.5 | Sinkronisasi achievement yang dikenali Hydra | Usulan |
 | 0.6 | Deteksi save bawaan; kurangi ketergantungan executable Ludusavi setelah validasi database/lisensi | Usulan |
