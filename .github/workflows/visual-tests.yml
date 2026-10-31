@@ -1,0 +1,71 @@
+name: Game page visual tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'tests/visual/**'
+      - '.github/workflows/visual-tests.yml'
+      - 'integration/overlay/src/renderer/src/components/personal-cloud-backup/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: game-visual-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  visual:
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.21.0
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            tests/visual/package-lock.json
+      - name: Install isolated visual test dependencies
+        run: |
+          npm ci --ignore-scripts
+          npm ci --prefix tests/visual --ignore-scripts
+          npx --prefix tests/visual playwright install chromium
+      - name: Test six panel states at two window sizes
+        run: npx --prefix tests/visual playwright test -c tests/visual/playwright.config.mjs
+      # An existing verified package avoids rebuilding a 200 MB installer for test-only changes.
+      # This native check remains pinned to v0.2.2; browser tests use the current component.
+      - uses: actions/download-artifact@v4
+        with:
+          name: Hydra-Personal-Backup-Windows-x64
+          path: package
+          run-id: 41234708380
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify package and test the real Windows game page
+        shell: pwsh
+        run: |
+          Get-Content package/SHA256SUMS.txt | ForEach-Object {
+            $hash, $file = $_ -split '  ', 2
+            $actual = (Get-FileHash (Join-Path package $file) -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($actual -ne $hash) { throw "Checksum mismatch: $file" }
+          }
+          $portable = (Get-ChildItem package/*-portable.exe).FullName
+          if (!$portable) { throw 'Portable application is missing' }
+          node tests/visual/windows-game-page.mjs $portable
+          if ($LASTEXITCODE -ne 0) { throw 'Windows game page visual test failed' }
+      - name: Create screenshot gallery
+        if: always()
+        run: node tests/visual/gallery.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Game-page-visual-report
+          path: visual-results/
+          if-no-files-found: error
+          retention-days: 30
