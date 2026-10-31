@@ -33,6 +33,19 @@ test('sumber Hydra yang berubah ditolak sebelum menulis file apa pun', async t =
   await assert.rejects(fs.access(path.join(root, '.personal-backup-originals')));
 });
 
+test('checkout Windows CRLF diterima dan sumber asli dipertahankan dalam cadangan', async t => {
+  const root = await source(t);
+  const metadata = JSON.parse(await fs.readFile(new URL('../integration/upstream.json', import.meta.url), 'utf8'));
+  for (const file of Object.keys(metadata.files)) {
+    const target = path.join(root, file);
+    await fs.writeFile(target, (await fs.readFile(target, 'utf8')).replace(/\r?\n/g, '\r\n'));
+  }
+  const original = await fs.readFile(path.join(root, 'src/main/index.ts'), 'utf8');
+  await applyHydra(root);
+  assert.equal(await fs.readFile(path.join(root, '.personal-backup-originals/src/main/index.ts'), 'utf8'), original);
+  assert.match(await fs.readFile(path.join(root, 'src/main/index.ts'), 'utf8'), /await startPersonalBackup/);
+});
+
 test('file tambahan milik pengguna tidak ditimpa oleh pemasang', async t => {
   const root = await source(t);
   const file = path.join(root, 'src/main/services/personal-cloud-backup/core/engine.mjs');

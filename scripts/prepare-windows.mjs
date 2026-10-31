@@ -10,8 +10,8 @@ export async function prepareWindows(target) {
   // Read and validate these anchors before the integration writes any files.
   const managerPath = 'src/main/services/update-manager.ts';
   const restartPath = 'src/main/events/autoupdater/restart-and-install-update.ts';
-  const manager = await fs.readFile(path.join(root, managerPath), 'utf8');
-  const restart = await fs.readFile(path.join(root, restartPath), 'utf8');
+  const manager = (await fs.readFile(path.join(root, managerPath), 'utf8')).replace(/\r\n/g, '\n');
+  const restart = (await fs.readFile(path.join(root, restartPath), 'utf8')).replace(/\r\n/g, '\n');
   const managerAnchor = '  public static async checkForUpdates() {';
   const restartAnchor = 'export const restartAndInstallUpdate = () => {';
   for (const [text, anchor] of [[manager, managerAnchor], [restart, restartAnchor]]) {

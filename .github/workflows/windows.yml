@@ -16,6 +16,9 @@ jobs:
   build:
     runs-on: windows-2022
     timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
     env:
       CSC_IDENTITY_AUTO_DISCOVERY: 'false'
       HUSKY: '0'
@@ -53,7 +56,9 @@ jobs:
       - name: Integrate Personal Backup
         run: node backup/scripts/prepare-windows.mjs hydra
       - name: Install build tools
-        run: npm install --global yarn@1.22.22
+        run: |
+          corepack enable
+          corepack prepare yarn@1.22.22 --activate
       - name: Install Hydra dependencies and bundled tools
         working-directory: hydra
         run: yarn install --frozen-lockfile --network-timeout 300000

@@ -47,11 +47,15 @@ async function walk(directory) {
 export async function applyHydra(target) {
   const root = await safePath(path.resolve(target));
   const sources = {};
+  const originals = {};
   for (const [file, expected] of Object.entries(metadata.files)) {
     await safePath(path.join(root, file));
-    const content = await fs.readFile(path.join(root, file), 'utf8');
+    const original = await fs.readFile(path.join(root, file), 'utf8');
+    // A Windows checkout may convert LF to CRLF without changing the source.
+    const content = original.replace(/\r\n/g, '\n');
     if (digest(content) !== expected.sha256) throw new Error(`File berbeda dari Hydra ${metadata.ref}: ${file}. Tidak ada perubahan yang ditulis.`);
     sources[file] = content;
+    originals[file] = original;
   }
   const patched = integrate(sources);
   const writes = [];
@@ -69,7 +73,7 @@ export async function applyHydra(target) {
   await fs.mkdir(backup);
   const written = [];
   try {
-    for (const [file, source] of Object.entries(sources)) {
+    for (const [file, source] of Object.entries(originals)) {
       await fs.mkdir(path.dirname(path.join(backup, file)), { recursive: true });
       await fs.writeFile(path.join(backup, file), source);
     }
@@ -80,7 +84,7 @@ export async function applyHydra(target) {
     }
   } catch (error) {
     for (const file of written.reverse()) {
-      if (file in sources) await fs.writeFile(path.join(root, file), sources[file]);
+      if (file in sources) await fs.writeFile(path.join(root, file), originals[file]);
       else await fs.rm(path.join(root, file), { force: true });
     }
     throw error;
