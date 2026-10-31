@@ -31,7 +31,14 @@ export function integrate(files) {
   edit('src/main/services/window-manager.ts', '            shell.openPath(executablePath);', '            if (shop === "steam" || shop === "custom") {\n              await launchGame({ shop, objectId, executablePath, launchOptions }).catch(error => {\n                logger.warn("Tray game launch failed", error);\n                dialog.showErrorBox("Game belum dapat dibuka", String(error.message ?? error));\n              });\n            } else {\n              await shell.openPath(executablePath);\n            }');
   edit('src/main/services/window-manager.ts', '      const userPreferences = await db.get<string, UserPreferences>(\n        levelKeys.userPreferences,\n        {\n          valueEncoding: "json",\n        }\n      );\n\n      mainWindow.setProgressBar(-1);', '      mainWindow.setProgressBar(-1);');
   edit('src/main/services/window-manager.ts', '      await this.saveScreenConfig(screenConfig);', '      await this.saveScreenConfig(screenConfig);\n      const userPreferences = await db.get<string, UserPreferences>(levelKeys.userPreferences, { valueEncoding: "json" }).catch(() => null);');
-  edit('src/main/services/window-manager.ts', 'export class WindowManager {', 'export class WindowManager {\n  private static personalBackupTray: Tray | null = null;');
+  edit('src/main/services/window-manager.ts', 'export class WindowManager {', 'export class WindowManager {\n  private static personalBackupTray: Tray | null = null;\n  private static mainWindowOpening: Promise<void> | undefined;');
+  edit('src/main/services/window-manager.ts', '  public static async createMainWindow(options?: CreateMainWindowOptions) {', `  public static createMainWindow(options?: CreateMainWindowOptions) {
+    if (this.mainWindow) return Promise.resolve();
+    this.mainWindowOpening ??= this.createMainWindowInternal(options).finally(() => { this.mainWindowOpening = undefined; });
+    return this.mainWindowOpening;
+  }
+
+  private static async createMainWindowInternal(options?: CreateMainWindowOptions) {`);
   edit('src/main/services/window-manager.ts', '  public static async createSystemTray(language: string) {', '  public static async createSystemTray(language: string) {\n    if (this.personalBackupTray && !this.personalBackupTray.isDestroyed()) return;');
   edit('src/main/services/window-manager.ts', '    const updateSystemTray = async () => {', `    this.personalBackupTray = tray;
     const openLauncher = () => this.openMainWindow();

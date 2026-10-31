@@ -37,6 +37,14 @@ test('tray opens cached menu immediately, coalesces slow library reads, and rest
   const output = ts.transpileModule(patched['src/main/services/window-manager.ts'].replaceAll('import.meta.env', '({})'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText;
   vm.runInNewContext(output, { exports: module.exports, module, require: name => dependencies[name] ?? {}, process: { platform: 'win32', env: {} }, __dirname: '/test', console, setTimeout, clearTimeout });
   const Manager = module.exports.WindowManager;
+  let createdWindows = 0, releaseWindow;
+  Manager.createMainWindowInternal = () => { createdWindows++; return new Promise(resolve => { releaseWindow = resolve; }); };
+  const firstWindow = Manager.createMainWindow();
+  const secondWindow = Manager.createMainWindow();
+  assert.equal(firstWindow, secondWindow);
+  assert.equal(createdWindows, 1);
+  releaseWindow();
+  await firstWindow;
   await Manager.createSystemTray('en');
   assert.equal(reads, 1);
   tray.emit('right-click');
