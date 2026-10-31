@@ -17,7 +17,7 @@ async function source(t) {
 test('integrasi diterapkan pada file asli tag 4.3.0 dan sumber asli dicadangkan', async t => {
   const root = await source(t);
   const result = await applyHydra(root);
-  assert.equal(result.files, 22);
+  assert.equal(result.files, 23);
   assert.equal(await fs.readFile(path.join(root, '.personal-backup-originals/src/main/index.ts'), 'utf8'), await fs.readFile(path.join(fixture, 'src/main/index.ts'), 'utf8'));
   assert.match(await fs.readFile(path.join(root, 'src/main/services/process-watcher.ts'), 'utf8'), /if \(!options.isShutdown\) onPersonalBackupGameClosed\(game\)/);
   for (const file of ['engine.mjs', 'controller.mjs', 'ludusavi.mjs', 'controller.d.mts']) await fs.access(path.join(root, 'src/main/services/personal-cloud-backup/core', file));

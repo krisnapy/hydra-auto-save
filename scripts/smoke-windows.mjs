@@ -23,6 +23,18 @@ child.stderr.on('data', data => { logs += data; });
 let socket;
 let pending = new Map();
 let sequence = 0;
+const connectToPage = async page => {
+  socket = new WebSocket(page.webSocketDebuggerUrl);
+  await new Promise((resolve, reject) => { socket.addEventListener('open', resolve, { once: true }); socket.addEventListener('error', reject, { once: true }); });
+  socket.addEventListener('message', event => {
+    const reply = JSON.parse(String(event.data));
+    if (reply.id && pending.has(reply.id)) {
+      const { resolve, reject, timer } = pending.get(reply.id);
+      clearTimeout(timer); pending.delete(reply.id);
+      if (reply.error) reject(new Error(reply.error.message)); else resolve(reply.result);
+    }
+  });
+};
 try {
   let page;
   for (let attempt = 0; attempt < 90; attempt++) {
@@ -36,16 +48,7 @@ try {
   }
   if (!page) throw new Error('Renderer lokal tidak terbuka dalam 90 detik.');
   metrics.rendererMs = Date.now() - startedAt;
-  socket = new WebSocket(page.webSocketDebuggerUrl);
-  await new Promise((resolve, reject) => { socket.addEventListener('open', resolve, { once: true }); socket.addEventListener('error', reject, { once: true }); });
-  socket.addEventListener('message', event => {
-    const reply = JSON.parse(String(event.data));
-    if (reply.id && pending.has(reply.id)) {
-      const { resolve, reject, timer } = pending.get(reply.id);
-      clearTimeout(timer); pending.delete(reply.id);
-      if (reply.error) reject(new Error(reply.error.message)); else resolve(reply.result);
-    }
-  });
+  await connectToPage(page);
   const call = (method, params = {}) => new Promise((resolve, reject) => {
     const id = ++sequence;
     const timer = setTimeout(() => { pending.delete(id); reject(new Error(`${method} timed out`)); }, 30000);
@@ -102,14 +105,26 @@ try {
     const reopenedAt = Date.now();
     const reopen = spawn(executable, [], { stdio: 'ignore' });
     reopen.unref();
-    let restored = false;
+    let reopenedPage;
     for (let attempt = 0; attempt < 30; attempt++) {
       const pages = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json();
-      if (pages.some(item => item.type === 'page' && item.url.includes('renderer') && item.id !== page.id)) { restored = true; break; }
+      reopenedPage = pages.find(item => item.type === 'page' && item.url.includes('renderer') && item.id !== page.id);
+      if (reopenedPage) break;
       await delay(1000);
     }
-    if (!restored) throw new Error('Jendela tidak dapat dibuka kembali dari proses tray.');
+    if (!reopenedPage) throw new Error('Jendela tidak dapat dibuka kembali dari proses tray.');
     metrics.reopenRendererMs = Date.now() - reopenedAt;
+    await connectToPage(reopenedPage);
+    let reopenedSnapshot;
+    for (let attempt = 0; attempt < 30; attempt++) {
+      if (await evaluate('Boolean(window.personalBackup)')) {
+        reopenedSnapshot = await evaluate('window.personalBackup.invoke({ action: "snapshot", lightweight: true })');
+        break;
+      }
+      await delay(1000);
+    }
+    if (reopenedSnapshot?.deviceId !== snapshot.deviceId) throw new Error('Layanan backup tidak tersedia setelah jendela dibuka kembali.');
+    metrics.reopenIpcMs = Date.now() - reopenedAt;
   }
   await fs.writeFile(path.join(output, `Startup-${metrics.kind}.json`), JSON.stringify(metrics, null, 2));
   console.log('Startup metrics:', JSON.stringify(metrics));

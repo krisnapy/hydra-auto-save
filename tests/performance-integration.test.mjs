@@ -12,7 +12,7 @@ const files = Object.fromEntries(await Promise.all(Object.keys(metadata.files).m
 const patched = integrate(files);
 
 test('tray opens cached menu immediately, coalesces slow library reads, and restores minimized window', async () => {
-  let release, reads = 0, created = 0;
+  let release, reads = 0, created = 0, launches = 0, launchError;
   const library = new Promise(resolve => { release = resolve; });
   let tray;
   class Tray extends EventEmitter {
@@ -25,7 +25,8 @@ test('tray opens cached menu immediately, coalesces slow library reads, and rest
   const nativeTheme = new EventEmitter();
   const module = { exports: {} };
   const dependencies = {
-    electron: { Tray, Menu: { buildFromTemplate: items => ({ items }) }, nativeTheme, app: { quit() {} } },
+    electron: { Tray, Menu: { buildFromTemplate: items => ({ items }) }, nativeTheme, app: { quit() {} }, dialog: { showErrorBox: (title, message) => { launchError = message; } } },
+    '../helpers/launch-game': { launchGame: async () => { launches++; throw new Error('Pemulihan sedang berjalan'); } },
     '@main/level': { gamesSublevel: { values: () => ({ all: () => { reads++; return library; } }) } },
     './personal-cloud-backup': { getPersonalBackup: async () => ({ snapshot: async () => ({ enabled: true, operations: [] }) }) },
     'node:path': path,
@@ -48,10 +49,13 @@ test('tray opens cached menu immediately, coalesces slow library reads, and rest
   Manager.mainWindowInstance = { show: () => { shown = true; }, isMinimized: () => true, restore: () => { restored = true; }, focus: () => { focused = true; }, isDestroyed: () => false };
   tray.emit('double-click');
   assert.ok(shown && restored && focused);
-  release([]);
+  release([{ title: 'Game fixture', executablePath: 'C:\\fixture.exe', shop: 'steam', objectId: '1', lastTimePlayed: 1 }]);
   await new Promise(resolve => setImmediate(resolve));
   tray.emit('right-click');
   assert.ok(tray.menu.items.some(item => item.label === 'Auto Backup aktif'));
+  await tray.menu.items.find(item => item.label === 'Game fixture').click();
+  assert.equal(launches, 1);
+  assert.match(launchError, /Pemulihan/);
 });
 
 test('startup loads local auth without waiting for the remote profile, and stale refresh cannot replace current auth', async () => {
@@ -84,4 +88,21 @@ test('startup loads local auth without waiting for the remote profile, and stale
     await new Promise(resolve => setImmediate(resolve));
     assert.equal(updated, false);
   } finally { clearTimeout(timer); }
+});
+
+test('optional startup paths share initialization so credential cleanup cannot overlap', async () => {
+  const source = await fs.readFile(new URL('../integration/overlay/src/main/services/personal-cloud-backup/optional-startup.ts', import.meta.url), 'utf8');
+  const output = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText;
+  let calls = 0, release;
+  const pending = new Promise(resolve => { release = resolve; });
+  const module = { exports: {} };
+  vm.runInNewContext(output, { module, exports: module.exports, require: () => ({ initializeEpicIntegration: () => { calls++; return pending; } }) });
+  const first = module.exports.initializeOptionalEpic();
+  const second = module.exports.initializeOptionalEpic();
+  assert.equal(first, second);
+  assert.equal(calls, 1);
+  release();
+  await first;
+  await module.exports.initializeOptionalEpic();
+  assert.equal(calls, 1);
 });
