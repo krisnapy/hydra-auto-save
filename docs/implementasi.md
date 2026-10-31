@@ -2,6 +2,16 @@
 
 Tanggal: 31 Oktober 2026 WITA. Status: paket Windows awal tersedia; uji game nyata belum dilakukan.
 
+## Perbaikan deteksi Steam ID — 0.1.1
+
+Uji Windows [41217704915](https://github.com/krisnapy/hydra-auto-save/actions/runs/41217704915), selesai 1 November 2026 WITA, mereproduksi timeout pencarian Steam ID pada Ludusavi 0.29.0 asli. `find` membaca nama tambahan dari stdin sampai EOF meskipun `--steam-id` sudah diberikan. Runner lama membiarkan stdin terbuka. Runner baru menutupnya segera, tanpa shell.
+
+Uji yang sama memverifikasi pencarian Steam ID, judul persis, preview file save contoh, dan penanganan JSON error pada exit nonzero. Database terbaru mengenali `292030` sebagai The Witcher 3: Wild Hunt dan `3751260` sebagai The Blood of Dawnwalker; `1245629` tidak dikenali pada pemeriksaan tersebut. Pengguna kemudian mengoreksi salah ketik tersebut menjadi `1245620`; [uji lanjutan 41218017829](https://github.com/krisnapy/hydra-auto-save/actions/runs/41218017829) berhasil mengenalinya sebagai Elden Ring. Ini membuktikan pencocokan database, bukan lokasi save nyata di PC pengguna.
+
+Paket 0.1.1 berhasil dibangun melalui [41217615393](https://github.com/krisnapy/hydra-auto-save/actions/runs/41217615393), lalu [41218865374](https://github.com/krisnapy/hydra-auto-save/actions/runs/41218865374) membuka aplikasi Windows, memeriksa checksum, dan menerbitkan [rilis publik 0.1.1](https://github.com/krisnapy/hydra-auto-save/releases/tag/v0.1.1). Keempat tautan asset berhasil diperiksa tanpa autentikasi.
+
+Sebanyak 34 pengujian lokal dan Windows lulus. Error game tidak dikenal kini memberi petunjuk memperbarui database atau memilih lokasi save manual. Kegagalan proses dan timeout mendapat pesan yang berbeda.
+
 ## Paket Windows terverifikasi
 
 - [Build Windows 41194991037](https://github.com/krisnapy/hydra-auto-save/actions/runs/41194991037) berhasil dari source commit `6f6125393c1f611cd8fc2256d0327a978b224141`.

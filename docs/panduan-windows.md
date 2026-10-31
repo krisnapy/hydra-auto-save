@@ -16,3 +16,14 @@ Gunakan salinan save contoh untuk percobaan pertama. Dukungan awal Steam dan gam
 Paket ini memakai profil Hydra yang sama, sehingga riwayat game tetap tersedia. Jangan menghapus profil tersebut atau memasang di atas folder Hydra resmi. Pemulihan profil atau perubahan versi Hydra dapat memengaruhi kompatibilitas. Pembaruan aplikasi otomatis dinonaktifkan dalam build ini; perbarui melalui paket Personal Backup berikutnya.
 
 Build belum ditandatangani dengan sertifikat penerbit Windows. Tidak diperlukan mematikan antivirus. Periksa asal unduhan dan SHA256SUMS.txt dari hasil build yang sama.
+
+## Memperbarui Personal Backup
+
+Tutup game dan Hydra, termasuk ikon di dekat jam. Jika memakai installer, jalankan installer Personal Backup yang baru ke folder Personal Backup sebelumnya; pastikan folder itu berbeda dari Hydra resmi. Jika memakai portable, simpan file baru di lokasi pilihan lalu jalankan file baru tersebut. Jangan menghapus profil Hydra atau folder backup cloud.
+
+## Jika deteksi save gagal
+
+- Pada Settings → Personal Cloud Backup, tekan **Perbarui database lokasi save**, lalu ulangi **Deteksi lokasi save** pada halaman game.
+- Jika game/Steam ID belum dikenali, gunakan **Pilih folder save** atau **Pilih file save**. Pilih save asli game, bukan folder tujuan backup cloud.
+- Setelah lokasi dipilih, tekan **Backup sekarang** dan periksa **Backup lokal selesai**.
+- Versi 0.1.0 memiliki masalah pencarian Steam ID yang dapat menunggu input sampai batas waktu. Perbaikan ada pada 0.1.1. Pengguna tidak perlu menjalankan perintah Ludusavi sendiri.
