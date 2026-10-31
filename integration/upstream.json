@@ -29,6 +29,15 @@
     },
     "src/renderer/src/pages/settings/settings.tsx": {
       "sha256": "f2fb1f7494f4a495f807be3bf89a340b52bcf1d562a2eb2014470c4059dc20f6"
+    },
+    "src/main/main.ts": {
+      "sha256": "c925f356d7337cf500e378e10f9ec75cecd413073489410068d2add2cb92ce61"
+    },
+    "src/main/services/window-manager.ts": {
+      "sha256": "a7f2efb4ebec057da94cb68a747c42aa25de5d77f5ef14018a0258e1c5d2d2f9"
+    },
+    "src/main/services/hydra-api.ts": {
+      "sha256": "5257aaea380806a625ab9b4fcb91fe3cebb06fe1b863c31296803cdbbfbf450f"
     }
   }
 }

@@ -5,8 +5,8 @@ import { BackupEngine, atomicJson, makeRoots, safePath } from './engine.mjs';
 import { Ludusavi } from './ludusavi.mjs';
 
 export class BackupController {
-  constructor({ stateDirectory, getGames, assertStopped, onError = () => {}, stableMs = 1200, pollMs = 5000 }) {
-    Object.assign(this, { stateDirectory, getGames, assertStopped, onError, stableMs, pollMs });
+  constructor({ stateDirectory, getGames, assertStopped, onError = () => {}, isBackground = () => false, stableMs = 1200, pollMs = 5000, idlePollMs = 30000 }) {
+    Object.assign(this, { stateDirectory, getGames, assertStopped, onError, isBackground, stableMs, pollMs, idlePollMs });
     this.active = false;
     this.inFlight = null;
     this.engine = null;
@@ -44,7 +44,12 @@ export class BackupController {
   }
   save() {
     // Serialize persistence so concurrent game jobs cannot publish older settings.
-    this.saving = (this.saving ?? Promise.resolve()).catch(() => {}).then(() => atomicJson(this.file, this.state));
+    this.saving = (this.saving ?? Promise.resolve()).catch(() => {}).then(async () => {
+      const serialized = JSON.stringify(this.state);
+      if (serialized === this.persistedState) return;
+      await atomicJson(this.file, JSON.parse(serialized));
+      this.persistedState = serialized;
+    });
     return this.saving;
   }
   rememberOperation(result) {
@@ -201,7 +206,11 @@ export class BackupController {
   async runTick() {
     this.active = true;
     try {
-      for (const game of await this.getGames()) {
+      const games = await this.getGames();
+      // Keep the five-second game cadence, but avoid hashing idle libraries in the tray.
+      if (this.isBackground() && !games.some(game => game.running) && Date.now() - (this.lastAutomaticScan ?? 0) < this.idlePollMs) return;
+      this.lastAutomaticScan = Date.now();
+      for (const game of games) {
         if (!this.state.enabled || this.stopping || this.pendingControls) break;
         if (this.engine.busy(game.id)) continue;
         const operation = this.operation('automatic', game.id, 'preparing');

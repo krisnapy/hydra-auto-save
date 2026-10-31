@@ -48,12 +48,12 @@ export function PersonalCloudBackup({ gameId }: { gameId?: string }) {
     let progressPending = false;
     void refresh().finally(() => { historyPending = false; });
     const timer = setInterval(() => {
-      if (historyPending) return;
+      if (historyPending || document.hidden) return;
       historyPending = true;
       void refresh().finally(() => { historyPending = false; });
     }, 10000);
     const progress = async () => {
-      if (progressPending) return;
+      if (progressPending || document.hidden) return;
       progressPending = true;
       const sequence = requestNumber.current;
       try {
@@ -64,7 +64,16 @@ export function PersonalCloudBackup({ gameId }: { gameId?: string }) {
     };
     void progress();
     const progressTimer = setInterval(() => void progress(), 1000);
-    return () => { mounted.current = false; requestNumber.current++; clearInterval(timer); clearInterval(progressTimer); };
+    const onVisible = () => {
+      if (document.hidden) return;
+      void progress();
+      if (!historyPending) {
+        historyPending = true;
+        void refresh().finally(() => { historyPending = false; });
+      }
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => { mounted.current = false; requestNumber.current++; clearInterval(timer); clearInterval(progressTimer); document.removeEventListener("visibilitychange", onVisible); };
   }, [refresh]);
   const action = async (name: string, values: Record<string, unknown> = {}) => {
     setBusy(true); setError(""); setMessage("");

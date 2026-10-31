@@ -33,3 +33,11 @@ Tutup game dan Hydra, termasuk ikon di dekat jam. Jika memakai installer, jalank
 Settings dan halaman game menampilkan antrean serta tahap operasi yang sedang berjalan. Saat jumlah file diketahui, progress bar menunjukkan file yang selesai pada tahap tersebut; tahap pemindaian/verifikasi memakai indikator berjalan tanpa persentase keseluruhan. Waktu mulai, pembaruan tahap, dan hasil operasi terakhir ditampilkan. Jika save tidak berubah, pemeriksaan selesai tanpa membuat versi baru.
 
 Permintaan pengaturan atau pemulihan yang dibuat saat backup aktif menunggu operasi saat ini selesai. Pemeriksaan otomatis berhenti sebelum game berikutnya untuk memberi giliran pada permintaan pengguna. Jangan tutup aplikasi selama penggantian save berlangsung.
+
+## Tray dan performa (0.1.3)
+
+Menutup jendela utama melepaskan renderer utamanya, sementara proses Hydra tetap berjalan di tray. Jika pengaturan Hydra memilih keluar ketika jendela ditutup, aplikasi benar-benar keluar dan backup otomatis berhenti. Gunakan klik ganda ikon tray untuk membuka kembali; menu klik kanan menyediakan Personal Cloud Backup, status backup saat menu diperbarui, dan Keluar. Menu tampil dari cache, lalu diperbarui di latar paling sering sekali tiap 15 detik saat diminta; tidak ada timer pembaruan menu tersendiri. Status menu dapat tertinggal sampai dibuka berikutnya.
+
+Saat semua jendela tersembunyi/minimized dan tidak ada game terpantau yang berjalan, pemeriksaan otomatis isi save dibatasi tiap 30 detik. Saat game berjalan atau jendela terlihat, interval kembali 5 detik. Backup manual dan pemicu game ditutup tetap langsung masuk antrean. Pengaturan yang tidak berubah tidak ditulis ulang ke disk. Pembaruan progres/riwayat antarmuka dihentikan saat halaman tersembunyi.
+
+Tray tetap memerlukan proses utama Hydra dan layanan yang sedang dipakai, termasuk pemantauan game, download aktif, serta backup. Ini bukan janji pemakaian CPU/RAM nol. Installer disarankan untuk penggunaan harian; portable perlu mengekstrak paket ketika dijalankan sehingga pembukaan awal dapat lebih lambat.

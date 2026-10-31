@@ -121,3 +121,51 @@ test('backup manual tidak bentrok dengan polling dan status selesai bertahan saa
   await controller.backup('steam:1');
   assert.match((await controller.snapshot('steam:1')).lastOperation.detail, /tidak berubah/);
 });
+
+test('tray idle skips repeated hashing, while running games, foreground and manual requests remain immediate', async t => {
+  const root = await fs.mkdtemp(path.join(await fs.realpath(os.tmpdir()), 'hydra-idle-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const file = path.join(root, 'save.sav');
+  await fs.writeFile(file, 'one');
+  let background = true, running = false;
+  const controller = await new BackupController({ stateDirectory: path.join(root, 'state'), stableMs: 1, isBackground: () => background, getGames: async () => [{ id: 'steam:1', running }] }).init();
+  await controller.configure({ enabled: true, destination: path.join(root, 'cloud') });
+  await controller.manual('steam:1', [{ path: file }]);
+  await controller.tick();
+  const scan = controller.engine.scan.bind(controller.engine);
+  let scans = 0;
+  controller.engine.scan = async roots => { scans++; return scan(roots); };
+  await fs.writeFile(file, 'two');
+  await controller.tick();
+  assert.equal(scans, 0);
+  await controller.backup('steam:1', 'game-closed');
+  assert.equal((await controller.snapshot('steam:1')).versions.length, 2);
+  scans = 0;
+  running = true;
+  await controller.tick();
+  assert.ok(scans > 0);
+  scans = 0;
+  running = false; background = false;
+  await controller.tick();
+  assert.ok(scans > 0);
+  background = true;
+  controller.lastAutomaticScan = Date.now() - 30001;
+  await fs.writeFile(file, 'three');
+  await controller.tick();
+  assert.equal((await controller.snapshot('steam:1')).versions.length, 3);
+});
+
+test('unchanged settings do not replace the settings file on idle polls', async t => {
+  const root = await fs.mkdtemp(path.join(await fs.realpath(os.tmpdir()), 'hydra-idle-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const controller = await new BackupController({ stateDirectory: root, getGames: async () => [] }).init();
+  await controller.configure({ enabled: true, destination: path.join(root, 'cloud') });
+  const before = await fs.stat(controller.file);
+  await controller.tick();
+  await controller.save();
+  const after = await fs.stat(controller.file);
+  assert.equal(after.mtimeMs, before.mtimeMs);
+  assert.equal(after.ino, before.ino);
+  await controller.configure({ retention: 20 });
+  assert.equal(JSON.parse(await fs.readFile(controller.file, 'utf8')).retention, 20);
+});

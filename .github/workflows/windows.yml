@@ -6,6 +6,7 @@ on:
     paths-ignore:
       - '.github/workflows/split-windows.yml'
       - '.github/workflows/ludusavi.yml'
+      - '.github/workflows/verify-windows.yml'
       - 'scripts/split-windows.mjs'
       - 'README.md'
       - 'docs/**'
@@ -22,6 +23,9 @@ jobs:
   build:
     runs-on: windows-2022
     timeout-minutes: 90
+    outputs:
+      dependency-cache-key: ${{ steps.dependencies.outputs.cache-primary-key }}
+      dependency-cache-hit: ${{ steps.dependencies.outputs.cache-hit }}
     defaults:
       run:
         shell: bash
@@ -45,6 +49,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22.21.0
+          cache: npm
+          cache-dependency-path: backup/package-lock.json
       - name: Test backup module
         working-directory: backup
         run: |
@@ -58,16 +64,47 @@ jobs:
           ref: 5845549311a20d485d027da875307fc70897bfdc
           path: hydra
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@stable
       - name: Integrate Personal Backup
         run: node backup/scripts/prepare-windows.mjs hydra
       - name: Install build tools
         run: |
           corepack enable
           corepack prepare yarn@1.22.22 --activate
+      - name: Restore pinned Hydra dependencies
+        id: dependencies
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            hydra/node_modules
+            hydra/hydra-native
+            hydra/legendary
+            hydra/ludusavi
+            hydra/binaries
+            hydra/.cache
+          key: hydra-deps-v1-windows2022-x64-node22.21.0-5845549311a20d485d027da875307fc70897bfdc-${{ hashFiles('hydra/yarn.lock', 'hydra/package.json') }}
+      - uses: dtolnay/rust-toolchain@stable
+        if: steps.dependencies.outputs.cache-hit != 'true'
       - name: Install Hydra dependencies and bundled tools
+        if: steps.dependencies.outputs.cache-hit != 'true'
         working-directory: hydra
         run: yarn install --frozen-lockfile --network-timeout 300000
+      - name: Validate dependencies with Electron
+        working-directory: hydra
+        run: |
+          yarn check --integrity
+          node ../backup/scripts/verify-build-cache.cjs
+      - name: Save validated pinned dependencies
+        if: steps.dependencies.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            hydra/node_modules
+            hydra/hydra-native
+            hydra/legendary
+            hydra/ludusavi
+            hydra/binaries
+            hydra/.cache
+          key: ${{ steps.dependencies.outputs.cache-primary-key }}
       - name: Reproduce and verify Ludusavi Steam ID detection
         run: node backup/scripts/check-ludusavi.mjs hydra/ludusavi/ludusavi.exe --live-manifest
       - name: Typecheck integrated Hydra
@@ -86,6 +123,11 @@ jobs:
           if (!(Test-Path $binary)) { throw 'Bundled Ludusavi is missing' }
           & $binary --version
           if ($LASTEXITCODE -ne 0) { throw 'Bundled Ludusavi cannot run' }
+      - name: Measure installed application startup and tray lifecycle
+        shell: pwsh
+        run: |
+          node backup/scripts/smoke-windows.mjs 'hydra/dist/win-unpacked/Hydra Personal Backup.exe' package --tray
+          if ($LASTEXITCODE -ne 0) { throw 'Installed application or tray lifecycle failed' }
       - name: Collect installers and checksums
         shell: pwsh
         run: |
@@ -103,3 +145,45 @@ jobs:
           if-no-files-found: error
           retention-days: 30
           compression-level: 0
+
+  warm-cache:
+    needs: build
+    if: needs.build.outputs.dependency-cache-hit != 'true'
+    runs-on: windows-2022
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: backup
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: hydralauncher/hydra
+          ref: 5845549311a20d485d027da875307fc70897bfdc
+          path: hydra
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.21.0
+      - name: Start warm dependency measurement
+        shell: pwsh
+        run: '"CACHE_STARTED=$([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds())" >> $env:GITHUB_ENV'
+      - uses: actions/cache/restore@v4
+        with:
+          path: |
+            hydra/node_modules
+            hydra/hydra-native
+            hydra/legendary
+            hydra/ludusavi
+            hydra/binaries
+            hydra/.cache
+          key: ${{ needs.build.outputs.dependency-cache-key }}
+          fail-on-cache-miss: true
+      - name: Verify native runtime without compilation or installation
+        working-directory: hydra
+        shell: pwsh
+        run: |
+          node ../backup/scripts/verify-build-cache.cjs
+          if ($LASTEXITCODE -ne 0) { throw 'Warm cache native validation failed' }
+          $elapsed = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() - [long]$env:CACHE_STARTED
+          "Warm dependency restore and Electron validation: $elapsed ms; no Rust compilation or dependency installation." | Tee-Object -FilePath $env:GITHUB_STEP_SUMMARY -Append

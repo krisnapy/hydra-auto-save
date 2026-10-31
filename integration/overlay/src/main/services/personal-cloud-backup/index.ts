@@ -1,4 +1,4 @@
-import { app } from "electron";
+import { app, BrowserWindow } from "electron";
 import path from "node:path";
 import fs from "node:fs";
 import { gamesSublevel, levelKeys } from "@main/level";
@@ -42,7 +42,8 @@ export const getPersonalBackup = () => {
   if (process.platform !== "win32") throw new Error("Personal Cloud Backup tahap awal hanya tersedia di Windows.");
   instance ??= new BackupController({
     stateDirectory: path.join(app.getPath("userData"), "personal-cloud-backup"),
-    getGames: async () => (await library()).map(game => ({ id: levelKeys.game(game.shop, game.objectId), title: game.title, shop: game.shop, objectId: game.objectId })),
+    getGames: async () => (await library()).map(game => ({ id: levelKeys.game(game.shop, game.objectId), title: game.title, shop: game.shop, objectId: game.objectId, running: isGameRunning(game.objectId, game.shop) || launchedGamePids.has(levelKeys.game(game.shop, game.objectId)) })),
+    isBackground: () => !BrowserWindow.getAllWindows().some(window => !window.isDestroyed() && window.isVisible() && !window.isMinimized()),
     assertStopped,
     onError: error => logger.warn("[Personal Backup]", error),
   }).init().then(async controller => {

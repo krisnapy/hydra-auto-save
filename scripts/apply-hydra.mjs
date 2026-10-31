@@ -18,6 +18,49 @@ export function integrate(files) {
   prepend('src/main/index.ts', 'import { startPersonalBackup, stopPersonalBackup } from "./services/personal-cloud-backup";');
   edit('src/main/index.ts', '  // Optional integration failures must not interrupt launcher startup.', '  await startPersonalBackup().catch(error => logger.warn("[Personal Backup] Startup failed", error));\n\n  // Optional integration failures must not interrupt launcher startup.');
   edit('src/main/index.ts', '    await saveSocialWindowsSession();', '    await saveSocialWindowsSession();\n    await stopPersonalBackup().catch(error => logger.warn("[Personal Backup] Shutdown failed", error));');
+  // Auth credentials are ready before returning; remote profile refresh must not block the window.
+  edit('src/main/services/hydra-api.ts', '    const updatedUserData = await getUserData();\n    if (generation !== this.authContexts.generation) return;\n    this.updateUserSubscription(updatedUserData?.subscription);', '    void getUserData().then(updatedUserData => {\n      if (generation !== this.authContexts.generation) return;\n      this.updateUserSubscription(updatedUserData?.subscription);\n    }).catch(error => logger.warn("[Personal Backup] Background profile refresh unavailable", error));');
+  for (const file of ['src/main/index.ts', 'src/main/main.ts']) {
+    edit(file, file.endsWith('/index.ts') ? '  await initializeEpicIntegration().catch((error) => {' : '      await initializeEpicIntegration();', file.endsWith('/index.ts') ? '  void initializeEpicIntegration().catch((error) => {' : '      void initializeEpicIntegration().catch(err => logger.warn("Epic integration initialization failed on startup", err));');
+  }
+  prepend('src/main/services/window-manager.ts', 'import { getPersonalBackup } from "./personal-cloud-backup";');
+  edit('src/main/services/window-manager.ts', '      const userPreferences = await db.get<string, UserPreferences>(\n        levelKeys.userPreferences,\n        {\n          valueEncoding: "json",\n        }\n      );\n\n      mainWindow.setProgressBar(-1);', '      mainWindow.setProgressBar(-1);');
+  edit('src/main/services/window-manager.ts', '      await this.saveScreenConfig(screenConfig);', '      await this.saveScreenConfig(screenConfig);\n      const userPreferences = await db.get<string, UserPreferences>(levelKeys.userPreferences, { valueEncoding: "json" }).catch(() => null);');
+  edit('src/main/services/window-manager.ts', 'export class WindowManager {', 'export class WindowManager {\n  private static personalBackupTray: Tray | null = null;');
+  edit('src/main/services/window-manager.ts', '  public static async createSystemTray(language: string) {', '  public static async createSystemTray(language: string) {\n    if (this.personalBackupTray && !this.personalBackupTray.isDestroyed()) return;');
+  edit('src/main/services/window-manager.ts', '    const updateSystemTray = async () => {', `    this.personalBackupTray = tray;
+    const openLauncher = () => this.openMainWindow();
+    let cachedMenu = Menu.buildFromTemplate([
+      { label: "Buka Hydra Personal Backup", click: openLauncher },
+      { label: "Personal Cloud Backup", click: () => this.redirectToMainWindow("settings") },
+      { type: "separator" },
+      { label: "Keluar", click: () => app.quit() },
+    ]);
+    let refreshedAt = 0;
+    let refreshing: Promise<Menu> | undefined;
+    const updateSystemTray = async () => {`);
+  edit('src/main/services/window-manager.ts', '      const contextMenu = Menu.buildFromTemplate([', `      const backup = process.platform === "win32" ? await getPersonalBackup().then(controller => controller.snapshot(undefined, true)).catch(() => undefined) : undefined;
+      const backupStatus = backup?.operations.length ? "Backup: " + backup.operations.length + " operasi aktif/menunggu" : backup?.enabled ? "Auto Backup aktif" : "Auto Backup nonaktif";
+      tray.setToolTip("Hydra Personal Backup · " + backupStatus);
+      const contextMenu = Menu.buildFromTemplate([
+        { label: backupStatus, enabled: false },
+        { label: "Personal Cloud Backup", click: () => this.redirectToMainWindow("settings") },`);
+  edit('src/main/services/window-manager.ts', '    const showContextMenu = async () => {\n      const contextMenu = await updateSystemTray();\n      tray.popUpContextMenu(contextMenu);\n    };', `    const refreshMenu = () => {
+      if (!refreshing) refreshing = updateSystemTray().then(menu => {
+        cachedMenu = menu;
+        refreshedAt = Date.now();
+        return menu;
+      }).catch(error => {
+        logger.warn("Tray menu refresh failed", error);
+        return cachedMenu;
+      }).finally(() => { refreshing = undefined; });
+      return refreshing;
+    };
+    const showContextMenu = () => {
+      tray.popUpContextMenu(cachedMenu);
+      if (Date.now() - refreshedAt > 15000) void refreshMenu();
+    };`);
+  edit('src/main/services/window-manager.ts', '      await updateSystemTray();\n\n      tray.addListener("double-click", () => {\n        if (this.mainWindow) {\n          this.mainWindow.show();\n        } else {\n          this.createMainWindow();\n        }\n      });', '      void refreshMenu();\n\n      tray.addListener("double-click", openLauncher);');
   prepend('src/main/services/process-watcher.ts', 'import { onPersonalBackupGameClosed } from "./personal-cloud-backup";');
   edit('src/main/services/process-watcher.ts', '  if (!options.isShutdown) onScreenshotGameClosed(gameKey);', '  if (!options.isShutdown) onScreenshotGameClosed(gameKey);\n  if (!options.isShutdown) onPersonalBackupGameClosed(game);');
   result['src/preload/index.ts'] += '\ncontextBridge.exposeInMainWorld("personalBackup", {\n  invoke: (request: Record<string, unknown>) => ipcRenderer.invoke("personalBackup", request),\n});\n';

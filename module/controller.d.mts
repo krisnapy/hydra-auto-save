@@ -1,4 +1,4 @@
-export interface BackupGame { id: string; title: string; shop: string; objectId: string; }
+export interface BackupGame { id: string; title: string; shop: string; objectId: string; running?: boolean; }
 export interface SaveRoot { id: string; path: string; kind: 'file' | 'directory'; }
 export interface BackupOperation {
   id: string; kind: string; gameId?: string; title?: string; phase: string;
@@ -14,7 +14,7 @@ export interface BackupSnapshot {
   activity: Array<{ at: string; gameId: string; status: string; detail: string }>;
 }
 export class BackupController {
-  constructor(options: { stateDirectory: string; getGames: () => Promise<BackupGame[]>; assertStopped: (gameId: string) => Promise<void>; onError?: (error: unknown) => void; stableMs?: number; pollMs?: number });
+  constructor(options: { stateDirectory: string; getGames: () => Promise<BackupGame[]>; assertStopped: (gameId: string) => Promise<void>; onError?: (error: unknown) => void; isBackground?: () => boolean; stableMs?: number; pollMs?: number; idlePollMs?: number });
   init(): Promise<this>;
   configure(values: { enabled?: boolean; destination?: string; ludusavi?: string; retention?: number }): Promise<void>;
   manual(gameId: string, selections: Array<{ path: string }>): Promise<void>;
