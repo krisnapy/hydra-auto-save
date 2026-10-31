@@ -63,3 +63,13 @@ Jika ada catatan pemulihan yang terputus, aplikasi memblokir backup dan pemuliha
 Jika catatan lama, rusak, lokasi berubah, atau hasil tidak dapat dipastikan, penanganan otomatis ditolak. Gunakan **Buka catatan pemulihan**, pertahankan journal serta folder `hydra-previous`/`hydra-interrupted`, dan periksa salinan save serta backup pengaman sebelum perubahan manual. Jangan menghapus journal hanya untuk menghilangkan peringatan. Penanganan ini tidak menjamin perlindungan terhadap kehilangan daya atau kerusakan disk.
 
 Pengguna lama yang pernah berhasil backup dan masih mengaktifkan Auto Backup tidak harus mengulang panduan; gunakan **Buka panduan pengaturan awal** jika diperlukan. Pergantian tujuan backup meminta backup percobaan baru. Versi ini belum memakai OAuth atau sinkronisasi achievement personal cloud.
+
+## Status jeda aman dan save yang terus berubah (0.2.2)
+
+Pada versi 0.1.5, setiap pemeriksaan menunggu 1,2 detik dan membaca ulang save sebelum membandingkannya dengan backup terakhir. Karena itu label “Menunggu penulisan save selesai” bisa muncul pada semua game, termasuk saat isi save tidak berubah. Label itu sendiri bukan bukti game sedang menulis atau backup gagal. Folder besar juga membuat pembacaan ulang berlangsung lama dengan label yang sama.
+
+Mulai 0.2.2, isi yang sama dengan backup normal terakhir dilewati setelah satu pembacaan sumber. Isi baru tetap diperiksa selama jeda aman; status membaca ulang ditampilkan terpisah dengan jumlah file yang sudah diperiksa. Perubahan singkat mendapat paling banyak tiga pemeriksaan kestabilan. Jika isi terus berubah, versi baru tidak dipublikasikan dan pesan menyebut lokasi yang berubah bila dapat diketahui.
+
+Percobaan otomatis memakai jeda per game 5, 10, 20, 40 lalu maksimum 60 detik setelah percobaan gagal karena sumber sibuk/berubah. Ini waktu minimum; aktivitas save, antrean dan jadwal pemeriksaan dapat menundanya. Game lain tetap mendapat giliran. Backup manual atau setelah game ditutup dapat mencoba langsung. Keberhasilan atau pengaturan lokasi baru menghapus jeda game tersebut.
+
+Jika terus berulang setelah game ditutup, periksa lokasi yang disebut: folder yang dipilih terlalu luas dapat mencakup log/cache yang terus berubah, atau proses lain masih menggunakan file. Pastikan lokasi memang save game. Jangan menghapus file atau mengabaikan pemeriksaan integritas untuk memaksa backup. Jika file yang terkunci berada di tujuan, periksa aplikasi sinkronisasi cloud dan akses folder.

@@ -21,7 +21,7 @@ const operationLabels: Record<string, string> = {
 };
 const phaseLabels: Record<string, string> = {
   queued: "Menunggu giliran; operasi yang berjalan akan diselesaikan dahulu", preparing: "Menyiapkan operasi", detecting: "Mencari lokasi save", manifest: "Mengunduh database lokasi save",
-  scanning: "Memeriksa isi save", stabilizing: "Menunggu penulisan save selesai", "checking-history": "Memeriksa riwayat backup", copying: "Menyalin dan memeriksa file",
+  scanning: "Membaca isi save untuk mencari perubahan", stabilizing: "Menunggu jeda aman penulisan save (1,2 detik)", "checking-stability": "Membaca ulang save untuk memastikan isinya stabil", "checking-history": "Memeriksa riwayat backup", copying: "Menyalin dan memeriksa file",
   verifying: "Memeriksa kembali sumber save", publishing: "Menyelesaikan versi backup", retention: "Merapikan riwayat backup", "checking-restore": "Memeriksa game dan integritas backup",
   "restore-staging": "Menyiapkan file pemulihan", "restore-checking-source": "Memeriksa save sebelum penggantian", "restore-replacing": "Mengganti save", "restore-cleanup": "Menyelesaikan pemulihan", "rolling-back": "Mengembalikan kondisi save setelah kegagalan",
 };
@@ -67,6 +67,7 @@ export function BackupProgressPanel({ gameId, busy }: { gameId?: string; busy: b
           <div key={operation.phase} className={`personal-backup__bar${determinate ? "" : " personal-backup__bar--indeterminate"}`} role="progressbar" aria-label={phaseLabel(operation.phase)} aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent}>
             <span style={determinate ? { transform: `scaleX(${percent! / 100})` } : undefined} />
           </div>
+          {!determinate && typeof operation.completed === "number" && <p>{operation.completed} file telah diperiksa pada tahap ini</p>}
           {determinate && <p>{operation.completed ?? 0} dari {operation.total} {operation.phase === "restore-replacing" ? "lokasi" : "file"} pada tahap ini</p>}
           <small>Mulai {new Date(operation.startedAt).toLocaleTimeString()}</small>
         </div>;

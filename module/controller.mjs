@@ -10,6 +10,7 @@ export class BackupController {
     Object.assign(this, { stateDirectory, getGames, assertStopped, onError, isBackground, stableMs, pollMs, idlePollMs, debounceMs, fallbackMs });
     this.dirty = new Map();
     this.lastScan = new Map();
+    this.unstableRetries = new Map();
     this.monitor = monitorFactory(id => this.markChanged(id));
     this.active = false;
     this.inFlight = null;
@@ -115,7 +116,7 @@ export class BackupController {
     // Let users stop future backups while an existing operation drains safely.
     if (values.setupCompleted === undefined && values.enabled === false && values.destination === undefined && values.ludusavi === undefined && (values.retention === undefined || values.retention === this.state.retention)) {
       this.state.enabled = false;
-      this.monitor.close(); this.dirty.clear(); clearTimeout(this.wakeTimer);
+      this.monitor.close(); this.dirty.clear(); this.unstableRetries.clear(); clearTimeout(this.wakeTimer);
       return this.save();
     }
     return this.control(() => this.configureInternal(values));
@@ -129,7 +130,7 @@ export class BackupController {
       if (!Number.isInteger(values.retention) || values.retention < 1 || values.retention > 100) throw new Error('Riwayat harus 1–100 versi.');
       next.retention = values.retention;
     }
-    if (next.destination !== this.state.destination) { next.firstBackupAt = undefined; next.setupCompleted = false; this.lastScan.clear(); }
+    if (next.destination !== this.state.destination) { next.firstBackupAt = undefined; next.setupCompleted = false; this.lastScan.clear(); this.unstableRetries.clear(); }
     if (values.setupCompleted !== undefined) {
       if (typeof values.setupCompleted !== 'boolean') throw new Error('Pengaturan panduan tidak valid.');
       if (values.setupCompleted && (!next.enabled || !next.destination || !next.firstBackupAt)) throw new Error('Pilih folder, buat backup percobaan, lalu aktifkan Auto Backup sebelum menyelesaikan panduan.');
@@ -145,7 +146,7 @@ export class BackupController {
       await fs.rm(probe);
     }
     this.state = next;
-    if (!next.enabled) { this.monitor.close(); this.dirty.clear(); clearTimeout(this.wakeTimer); }
+    if (!next.enabled) { this.monitor.close(); this.dirty.clear(); this.unstableRetries.clear(); clearTimeout(this.wakeTimer); }
     this.rebuild();
     await this.save();
   }
@@ -156,6 +157,7 @@ export class BackupController {
     const roots = await makeRoots(selections);
     if (this.engine) await this.engine.validate(roots);
     this.state.games[gameId] = { roots, mode: 'manual' };
+    this.unstableRetries.delete(gameId);
     this.lastScan.delete(gameId); this.markChanged(gameId);
     this.status.set(gameId, { status: 'waiting' });
     await this.save();
@@ -177,7 +179,7 @@ export class BackupController {
     const previous = this.state.games[game.id]?.mode === 'automatic' ? this.state.games[game.id].roots : [];
     const roots = [...new Map([...previous, ...fresh].map(root => [root.id, root])).values()].sort((a, b) => a.id.localeCompare(b.id));
     if (this.engine) await this.engine.validate(roots);
-    if (JSON.stringify(previous) !== JSON.stringify(roots)) this.lastScan.delete(game.id);
+    if (JSON.stringify(previous) !== JSON.stringify(roots)) { this.lastScan.delete(game.id); this.unstableRetries.delete(game.id); }
     this.state.games[game.id] = { roots, mode: 'automatic', title: found.title };
     this.lastDiscovery.set(game.id, Date.now());
     this.status.set(game.id, { status: 'waiting' });
@@ -210,7 +212,11 @@ export class BackupController {
     if (!this.engine) throw new Error('Pilih folder backup terlebih dahulu.');
     const config = this.state.games[gameId];
     if (!config?.roots.length) throw new Error('Perlu pengaturan lokasi save.');
-    try { return await this.engine.backup(gameId, config.roots, { reason }); }
+    try {
+      const result = await this.engine.backup(gameId, config.roots, { reason });
+      this.unstableRetries.delete(gameId);
+      return result;
+    }
     catch (error) { this.setStatus(gameId, error.code === 'SAVE_UNSTABLE' ? 'waiting' : 'failed', error.message); throw error; }
     finally { await this.save(); }
   }
@@ -243,6 +249,7 @@ export class BackupController {
       const known = new Set(games.map(game => game.id));
       for (const id of this.dirty.keys()) if (!known.has(id)) this.dirty.delete(id);
       for (const id of this.lastScan.keys()) if (!known.has(id)) this.lastScan.delete(id);
+      for (const id of this.unstableRetries.keys()) if (!known.has(id)) this.unstableRetries.delete(id);
       const watching = Boolean(this.timer);
       if (watching) await this.monitor.sync(Object.fromEntries(games.filter(game => this.state.games[game.id]?.roots.length).map(game => [game.id, this.state.games[game.id].roots])));
       // Dirty events bypass tray throttling. A full periodic scan remains the fallback.
@@ -250,7 +257,7 @@ export class BackupController {
       this.lastAutomaticScan = Date.now();
       for (const game of games) {
         if (!this.state.enabled || this.stopping || this.pendingControls) break;
-        if (this.engine.busy(game.id)) continue;
+        if (this.engine.busy(game.id) || Date.now() < (this.unstableRetries.get(game.id)?.nextAt ?? 0)) continue;
         const changedAt = this.dirty.get(game.id);
         const interval = watching && this.monitor.healthy(game.id) ? this.fallbackMs : (this.isBackground() && !game.running ? this.idlePollMs : this.pollMs);
         const due = Date.now() - (this.lastScan.get(game.id) ?? 0) >= interval;
@@ -270,7 +277,14 @@ export class BackupController {
             if (this.dirty.get(game.id) === changedAt) this.dirty.delete(game.id);
           }
         } catch (error) {
-          if (error.code === 'SAVE_UNSTABLE') { this.setStatus(game.id, 'waiting', error.message); this.markChanged(game.id); continue; }
+          if (error.code === 'SAVE_UNSTABLE') {
+            const attempts = (this.unstableRetries.get(game.id)?.attempts ?? 0) + 1;
+            const retryMs = Math.min(60000, 5000 * 2 ** Math.min(attempts - 1, 4));
+            this.unstableRetries.set(game.id, { attempts, nextAt: Date.now() + retryMs });
+            this.setStatus(game.id, 'waiting', `${error.message} Dicoba otomatis lagi paling cepat ${retryMs / 1000} detik; game lain tetap diproses.`);
+            this.markChanged(game.id);
+            continue;
+          }
           this.lastScan.set(game.id, Date.now());
           if (this.dirty.get(game.id) === changedAt) this.dirty.delete(game.id);
           if (!this.status.get(game.id) || this.status.get(game.id).status !== 'failed') this.setStatus(game.id, 'setup', error.message);

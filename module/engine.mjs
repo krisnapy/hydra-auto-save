@@ -117,7 +117,24 @@ export class BackupEngine {
     }
   }
 
-  async scan(roots) {
+  changedFiles(before, after, roots) {
+    const previous = new Map(before.files.map(file => [`${file.rootId}/${file.relative}`, file]));
+    const changed = [];
+    for (const entry of after.files) {
+      const key = `${entry.rootId}/${entry.relative}`;
+      const old = previous.get(key);
+      if (!old || old.hash !== entry.hash || old.bytes !== entry.bytes) changed.push(this.source(roots, entry));
+      previous.delete(key);
+    }
+    for (const entry of previous.values()) changed.push(this.source(roots, entry));
+    for (const state of after.roots) if (before.roots.find(root => root.id === state.id)?.present !== state.present) changed.push(roots.find(root => root.id === state.id).path);
+    return [...new Set(changed)];
+  }
+  unstableChange(message, before, after, roots) {
+    const files = this.changedFiles(before, after, roots);
+    return unstable(`${message}${files.length ? ` Lokasi berubah: ${files.slice(0, 3).join('; ')}${files.length > 3 ? `; dan ${files.length - 3} lokasi lain` : ''}.` : ''}`);
+  }
+  async scan(roots, onFile = () => {}) {
     await this.validate(roots);
     const files = [], states = [];
     const walk = async (root, file, relative) => {
@@ -127,16 +144,19 @@ export class BackupEngine {
         for (const name of (await fs.readdir(file)).sort()) await walk(root, path.join(file, name), relative ? `${relative}/${name}` : name);
       } else if (info.isFile()) {
         files.push({ rootId: root.id, relative: relative || '.', bytes: info.size, hash: await hashFile(file) });
+        onFile(files.length);
       } else throw new Error(`File khusus tidak didukung: ${file}`);
     };
     for (const root of roots) {
       const present = await exists(root.path);
       states.push({ id: root.id, kind: root.kind, present });
       if (present) {
-        const info = await fs.lstat(root.path);
-        if ((root.kind === 'file' && !info.isFile()) || (root.kind === 'directory' && !info.isDirectory())) throw new Error('Jenis lokasi save berubah.');
-        try { await walk(root, root.path, ''); }
-        catch (error) { if (['ENOENT', 'EBUSY'].includes(error.code)) throw unstable('Save masih berubah atau sedang ditulis; tunggu hingga stabil.'); throw error; }
+        try {
+          const info = await fs.lstat(root.path);
+          if ((root.kind === 'file' && !info.isFile()) || (root.kind === 'directory' && !info.isDirectory())) throw new Error('Jenis lokasi save berubah.');
+          await walk(root, root.path, '');
+        }
+        catch (error) { if (['ENOENT', 'EBUSY'].includes(error.code)) throw unstable(`Save masih berubah atau sedang digunakan saat dibaca: ${error.path ?? root.path}.`); throw error; }
       }
     }
     return { roots: states, files };
@@ -311,19 +331,32 @@ export class BackupEngine {
     const report = (phase, completed, total) => this.onProgress(gameId, safety ? `safety-${phase}` : phase, completed, total);
     let temporary;
     try {
-      report('scanning');
-      const first = await this.scan(roots);
+      const scan = phase => { report(phase); return this.scan(roots, count => report(phase, count)); };
+      let first = await scan('scanning');
       if (!safety && !first.roots.some(root => root.present)) throw new Error('Lokasi save belum tersedia.');
-      report('stabilizing');
-      await delay(this.stableMs);
-      if (!same(first, await this.scan(roots))) throw unstable('Save masih berubah atau sedang ditulis; backup akan dicoba lagi setelah stabil.');
-      const fingerprint = digest(JSON.stringify(first));
       report('checking-history');
       const versions = await this.versions(gameId);
-      if (!safety && versions.find(version => !version.safety)?.fingerprint === fingerprint) {
-        this.onStatus(gameId, 'waiting');
+      const unchanged = value => !safety && versions.find(version => !version.safety)?.fingerprint === digest(JSON.stringify(value));
+      if (unchanged(first)) {
+        this.onStatus(gameId, 'waiting', 'Isi save tidak berubah; backup baru tidak diperlukan.');
         return null;
       }
+      // Only changed content needs a quiet window. Retry short write bursts a
+      // bounded number of times; never publish a snapshot that keeps changing.
+      for (let attempt = 0; attempt < 3; attempt++) {
+        report('stabilizing');
+        await delay(this.stableMs);
+        const next = await scan('checking-stability');
+        if (same(first, next)) break;
+        if (attempt === 2) throw this.unstableChange('Save masih berubah atau sedang ditulis setelah 3 pemeriksaan; tutup game bila terus berulang.', first, next, roots);
+        first = next;
+      }
+      if (!safety && !first.roots.some(root => root.present)) throw new Error('Lokasi save belum tersedia.');
+      if (unchanged(first)) {
+        this.onStatus(gameId, 'waiting', 'Isi save kembali sama dengan backup terakhir; backup baru tidak diperlukan.');
+        return null;
+      }
+      const fingerprint = digest(JSON.stringify(first));
       const id = `${Date.now()}-${randomUUID()}`;
       const directory = this.directory(gameId);
       await safePath(directory);
@@ -336,12 +369,18 @@ export class BackupEngine {
         const source = this.source(roots, entry);
         await safePath(source);
         const target = path.join(temporary, 'data', entry.hash);
-        if (!await exists(target)) await fs.copyFile(source, target);
-        if (await hashFile(target) !== entry.hash) throw unstable('Sumber berubah selama penyalinan; backup akan dicoba lagi setelah stabil.');
+        if (!await exists(target)) {
+          try { await fs.copyFile(source, target); }
+          catch (error) {
+            if (error.code === 'ENOENT' && !await exists(source)) throw unstable(`Sumber berubah selama penyalinan: ${source}. File hilang atau sedang diganti; backup akan dicoba lagi.`);
+            throw error;
+          }
+        }
+        if (await hashFile(target) !== entry.hash) throw unstable(`Sumber berubah selama penyalinan: ${source}. Backup akan dicoba lagi setelah stabil.`);
         report('copying', ++copied, first.files.length);
       }
-      report('verifying');
-      if (!same(first, await this.scan(roots))) throw unstable('Sumber berubah selama penyalinan; backup akan dicoba lagi setelah stabil.');
+      const final = await scan('verifying');
+      if (!same(first, final)) throw this.unstableChange('Sumber berubah selama penyalinan; backup akan dicoba lagi setelah stabil.', first, final, roots);
       const order = Math.max(0, ...versions.map(version => version.order ?? 0)) + 1;
       const manifest = { schema: 1, id, gameId, deviceId: this.deviceId, order, createdAt: new Date().toISOString(), reason, safety, fingerprint, ...first };
       report('publishing');
@@ -361,7 +400,7 @@ export class BackupEngine {
       this.onStatus(gameId, 'complete');
       return manifest;
     } catch (error) {
-      if (error.code === 'EBUSY') error = unstable('Save sedang digunakan; backup akan dicoba lagi setelah stabil.');
+      if (error.code === 'EBUSY') error = unstable(`File sedang digunakan saat backup: ${error.path ?? error.dest ?? 'lokasi tidak dilaporkan sistem'}. Periksa sumber save dan folder tujuan; backup akan dicoba lagi.`);
       this.onStatus(gameId, error.code === 'SAVE_UNSTABLE' ? 'waiting' : 'failed', error.code === 'ENOSPC' ? 'Ruang penyimpanan tidak cukup. Backup lama tetap dipertahankan.' : error.message);
       throw error;
     } finally {

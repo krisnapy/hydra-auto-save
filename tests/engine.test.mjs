@@ -28,13 +28,47 @@ test('backup lengkap, deduplikasi isi dan perubahan dengan ukuran sama', async t
   assert.equal((await engine.versions('steam:1')).length, 2);
 });
 
-test('save berubah selama masa stabil tidak menghasilkan versi', async t => {
-  const { engine, roots, file } = await fixture(t, { stableMs: 80 });
-  const pending = engine.backup('steam:1', roots);
-  await delay(25);
-  await fs.writeFile(file, 'still-writing');
-  await assert.rejects(pending, /masih berubah/);
+test('short write burst is retried within one backup and only stable content is published', async t => {
+  const { engine, roots, file } = await fixture(t);
+  const scan = engine.scan.bind(engine);
+  let count = 0;
+  engine.scan = async (...args) => {
+    if (++count === 2) await fs.writeFile(file, 'finished-writing');
+    return scan(...args);
+  };
+  const version = await engine.backup('steam:1', roots);
+  assert.equal(count, 4, 'initial, changed, stable, and post-copy checks');
+  assert.equal(version.files[0].hash, digest('finished-writing'));
+  assert.equal((await engine.versions('steam:1')).length, 1);
+});
+
+test('continuously changing save stops after three quiet windows and identifies the changed file', async t => {
+  const phases = [];
+  const { engine, roots, file } = await fixture(t, { onProgress: (_, phase) => phases.push(phase) });
+  const scan = engine.scan.bind(engine);
+  let count = 0;
+  engine.scan = async (...args) => {
+    await fs.writeFile(file, `writing-${++count}`);
+    return scan(...args);
+  };
+  await assert.rejects(engine.backup('steam:1', roots), error => error.code === 'SAVE_UNSTABLE' && error.message.includes(file));
+  assert.equal(count, 4);
+  assert.equal(phases.filter(phase => phase === 'stabilizing').length, 3);
   assert.equal((await engine.versions('steam:1')).length, 0);
+});
+
+test('unchanged content skips the quiet window and second source scan', async t => {
+  const phases = [];
+  const { engine, roots } = await fixture(t, { onProgress: (_, phase) => phases.push(phase) });
+  await engine.backup('steam:1', roots);
+  phases.length = 0;
+  const scan = engine.scan.bind(engine);
+  let scans = 0;
+  engine.scan = (...args) => { scans++; return scan(...args); };
+  assert.equal(await engine.backup('steam:1', roots), null);
+  assert.equal(scans, 1);
+  assert.ok(!phases.includes('stabilizing'));
+  assert.ok(!phases.includes('checking-stability'));
 });
 
 test('perubahan di tengah copy membatalkan versi dan mempertahankan versi lama', async t => {

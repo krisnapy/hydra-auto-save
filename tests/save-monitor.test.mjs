@@ -131,6 +131,46 @@ test('unstable save is retried without marking automatic backup as failed', asyn
   assert.equal(errors.length, 0);
   assert.equal(controller.dirty.has('game'), true);
   await controller.tick();
+  assert.equal((await controller.snapshot('game')).versions.length, 0, 'backoff prevents immediate rescan');
+  controller.unstableRetries.get('game').nextAt = 0;
+  await controller.tick();
   assert.equal((await controller.snapshot('game')).versions.length, 1);
+  assert.equal(controller.unstableRetries.has('game'), false);
   await controller.stop();
+});
+
+test('unstable game backs off to sixty seconds without blocking other games and manual backup bypasses the delay', async t => {
+  const { directory, save, cleanup } = await files(t);
+  const controller = await new BackupController({ stateDirectory: path.join(directory, 'state'), stableMs: 1, getGames: async () => [{ id: 'busy' }, { id: 'other' }] }).init();
+  cleanup(() => controller.stop());
+  await controller.configure({ enabled: true, destination: path.join(directory, 'cloud') });
+  await controller.manual('busy', [{ path: save }]);
+  await controller.manual('other', [{ path: save }]);
+  const backup = controller.engine.backup.bind(controller.engine);
+  let allow = false, calls = 0;
+  controller.engine.backup = async (gameId, ...args) => {
+    if (gameId === 'busy') {
+      calls++;
+      if (!allow) throw Object.assign(new Error('still writing'), { code: 'SAVE_UNSTABLE' });
+    }
+    return backup(gameId, ...args);
+  };
+  for (let attempt = 1; attempt <= 6; attempt++) {
+    if (attempt > 1) controller.unstableRetries.get('busy').nextAt = 0;
+    const started = Date.now();
+    await controller.tick();
+    const retry = controller.unstableRetries.get('busy');
+    assert.equal(retry.attempts, attempt);
+    const expected = Math.min(60000, 5000 * 2 ** Math.min(attempt - 1, 4));
+    assert.ok(retry.nextAt >= started + expected);
+    assert.ok(retry.nextAt <= Date.now() + expected);
+  }
+  assert.equal((await controller.snapshot('other')).versions.length, 1);
+  await controller.tick();
+  assert.equal(calls, 6, 'automatic retry cannot bypass the backoff');
+  allow = true;
+  await controller.backup('busy', 'game-closed');
+  assert.equal(calls, 7);
+  assert.equal(controller.unstableRetries.has('busy'), false);
+  assert.equal((await controller.snapshot('busy')).versions.length, 1);
 });
