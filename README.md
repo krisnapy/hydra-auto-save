@@ -4,6 +4,12 @@ Implementasi awal modul backup untuk salinan kode **Hydra Launcher 4.3.0 di Wind
 
 Draft awal tetap tersedia di [docs/rancangan-auto-backup.md](docs/rancangan-auto-backup.md). Keputusan implementasi awal dan batas verifikasi tercatat di [docs/implementasi.md](docs/implementasi.md).
 
+## Paket Windows tanpa Node.js
+
+Workflow **Windows installer** membangun installer dan aplikasi portable Windows x64 dari sumber Hydra 4.3.0 yang dipatok ke commit di atas. Lihat [hasil build](https://github.com/krisnapy/hydra-auto-save/actions/workflows/windows.yml). Setelah run berhasil, unduh artifact **Hydra-Personal-Backup-Windows-x64**, ekstrak ZIP, lalu jalankan file `…-setup.exe` atau `…-portable.exe`. Node.js dan Ludusavi dibawa oleh paket; pengguna tidak perlu memasangnya terpisah. Selama run belum berhasil, paket belum tersedia.
+
+Panduan pengguna: [panduan Windows](docs/panduan-windows.md). Tutup Hydra resmi sebelum memakai build ini; keduanya memakai profil lokal yang sama. Pilih folder instalasi berbeda. Build khusus ini memakai renderer lokal dan menonaktifkan pembaruan resmi otomatis agar integrasi backup tidak terganti. Keberhasilan build belum membuktikan pengujian semua game atau penyedia cloud.
+
 ## Yang sudah dibuat
 
 - Pemantauan perubahan isi save selama Hydra berjalan, dengan pemeriksaan setiap 5 detik dan masa stabil awal 1,2 detik.

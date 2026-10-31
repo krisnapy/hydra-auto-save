@@ -1,0 +1,92 @@
+name: Windows installer
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 90
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      HUSKY: '0'
+      # Public endpoints from the official v4.3.0 release build (run 41142471461).
+      MAIN_VITE_API_URL: https://hydra-api-us-east-1.losbroxas.org
+      MAIN_VITE_AUTH_URL: https://auth.hydra.losbroxas.org
+      MAIN_VITE_CHECKOUT_URL: https://checkout.hydralauncher.gg
+      MAIN_VITE_NIMBUS_API_URL: ''
+      MAIN_VITE_EXTERNAL_RESOURCES_URL: https://assets.hydralauncher.gg
+      RENDERER_VITE_EXTERNAL_RESOURCES_URL: https://assets.hydralauncher.gg
+      # Always use the bundled renderer containing our settings component.
+      MAIN_VITE_LAUNCHER_SUBDOMAIN: ''
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: backup
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.21.0
+      - name: Test backup module
+        working-directory: backup
+        run: |
+          npm ci --ignore-scripts
+          npm test
+          npm run check:integration
+      - name: Get pinned Hydra source
+        uses: actions/checkout@v4
+        with:
+          repository: hydralauncher/hydra
+          ref: 5845549311a20d485d027da875307fc70897bfdc
+          path: hydra
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Integrate Personal Backup
+        run: node backup/scripts/prepare-windows.mjs hydra
+      - name: Install build tools
+        run: npm install --global yarn@1.22.22
+      - name: Install Hydra dependencies and bundled tools
+        working-directory: hydra
+        run: yarn install --frozen-lockfile --network-timeout 300000
+      - name: Typecheck integrated Hydra
+        working-directory: hydra
+        run: yarn typecheck
+      - name: Build Windows application
+        working-directory: hydra
+        run: |
+          yarn electron-vite build
+          yarn electron-builder --win --x64 --config personal-backup-builder.cjs --publish never
+      - name: Verify bundled Ludusavi
+        working-directory: hydra
+        shell: pwsh
+        run: |
+          $binary = 'dist/win-unpacked/resources/ludusavi/ludusavi.exe'
+          if (!(Test-Path $binary)) { throw 'Bundled Ludusavi is missing' }
+          & $binary --version
+          if ($LASTEXITCODE -ne 0) { throw 'Bundled Ludusavi cannot run' }
+      - name: Collect installers and checksums
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force package | Out-Null
+          Copy-Item hydra/dist/Hydra-Personal-Backup-*.exe package/
+          Copy-Item backup/docs/panduan-windows.md package/README.md
+          $installers = Get-ChildItem package/*.exe
+          if ($installers.Count -ne 2) { throw 'Expected installer and portable executable' }
+          $installers | ForEach-Object { "$( (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant() )  $($_.Name)" } | Set-Content package/SHA256SUMS.txt
+      - name: Downloadable Windows package
+        uses: actions/upload-artifact@v4
+        with:
+          name: Hydra-Personal-Backup-Windows-x64
+          path: package/
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
