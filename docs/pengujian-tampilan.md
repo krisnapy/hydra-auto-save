@@ -1,5 +1,17 @@
 # Pengujian tampilan halaman game
 
+## Terbaru — panel samping 0.2.3
+
+Terverifikasi 1 November 2026 WITA. [Build 41244821443](https://github.com/krisnapy/hydra-auto-save/actions/runs/41244821443), [verifikasi paket 41245568250](https://github.com/krisnapy/hydra-auto-save/actions/runs/41245568250), dan [visual 41245568264](https://github.com/krisnapy/hydra-auto-save/actions/runs/41245568264) lulus. Sumber paket: [b390111](https://github.com/krisnapy/hydra-auto-save/commit/b3901111fb3eced15306a44ccffac8070e185cdd).
+
+24 tes panel/interaksi pada dua ukuran jendela lulus, mencakup membuka/menutup riwayat/menu, pembaruan progres, pembatalan pemulihan, kegagalan dan pembaruan jumlah versi setelah backup otomatis. Pemeriksaan manual browser pada390 px tidak menemukan overflow. 70 tes modul, typecheck seluruh Hydra, startup unpacked/portable dan tutup/buka ulang tray juga lulus. Halaman game native memakai paket 0.2.3 dari build yang sama dengan sumber pengujian; tidak lagi memakai paket 0.2.2.
+
+[Unduh galeri terbaru](https://github.com/krisnapy/hydra-auto-save/actions/runs/41245568264/artifacts/13059601320), ekstrak, lalu buka `index.html`. Tersedia 14 screenshot: 12 skenario komponen dan 2 gambar halaman/panel aplikasi Windows. Game native adalah game kustom contoh dengan profil sementara terverifikasi, tanpa menjalankan game, backup/restore save asli atau unggahan cloud. Pengujian browser memakai IPC contoh; belum ada pembandingan piksel baseline otomatis.
+
+Installer 0.2.3: [unduhan installer](https://github.com/krisnapy/hydra-auto-save/actions/runs/41245568250/artifacts/13059023197). Alternatif: [portable](https://github.com/krisnapy/hydra-auto-save/actions/runs/41245568250/artifacts/13059352420). Repo privat memerlukan akun yang memiliki akses; artifact berlaku 30 hari. Publikasi rilis publik dilewati sesuai status privat.
+
+## Riwayat — tampilan 0.2.2
+
 Hasil terverifikasi 1 November 2026 WITA: [Game page visual tests 41242768529](https://github.com/krisnapy/hydra-auto-save/actions/runs/41242768529) lulus pada Windows. Sumber pengujian: [f6b9f6a](https://github.com/krisnapy/hydra-auto-save/commit/f6b9f6aeb9703e9d37f6d7af7600d6c16ec0fa46).
 
 - 20 pemeriksaan panel/interaksi lulus pada dua ukuran jendela. Enam kondisi menggunakan komponen React dan SCSS produksi dengan IPC data contoh: belum diatur, backup berjalan, selesai, riwayat, pemulihan berjalan, dan gagal.

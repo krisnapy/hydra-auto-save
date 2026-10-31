@@ -1,6 +1,18 @@
 # Catatan implementasi awal
 
-Tanggal: 31 Oktober 2026 WITA. Status: paket Windows awal tersedia; uji game nyata belum dilakukan.
+Tanggal: 1 November 2026 WITA. Status: paket Windows awal tersedia; uji game nyata belum dilakukan.
+
+## Panel backup ringkas — 0.2.3
+
+Desain Panel samping diterapkan hanya pada bagian backup di halaman game. Grid menempatkan konteks/lokasi save di kiri dan kartu Personal Cloud di kanan; pada lebar jendela sampai1100 px susunannya menjadi satu kolom. Navigasi, hero, tombol Mainkan dan halaman Settings Hydra tidak didesain ulang. Path lengkap serta aktivitas berada dalam detail yang dapat dibuka. Nama folder pendek tetap membuka rootId tersimpan melalui IPC yang sama, tanpa menerima path dari renderer.
+
+Kartu menampilkan waktu backup normal terakhir, jumlah versi perangkat ini, Auto Backup, progres, serta dua tindakan utama. Pulihkan membuka daftar versi dan Pilih versi memanggil konfirmasi native yang sudah ada. Backup pengaman dan pengecekan game berhenti tetap di layanan utama. Menu pilihan menampung deteksi ulang, pemilihan folder/file save dan buka backup. Lokasi belum diatur langsung menawarkan deteksi/pemilihan folder. Kegagalan, ruang penyimpanan rendah dan pemulihan terputus tetap terlihat tanpa membuka detail; versi pemulihan diblokir jika recovery terputus.
+
+Polling progres tetap serial,250 ms aktif/1 detik idle, dan berhenti ketika tersembunyi. Perubahan hasil operasi memicu satu penyegaran snapshot sehingga waktu/jumlah versi segera mengikuti backup otomatis yang selesai; hasil identik tidak memicu pembacaan riwayat berulang.70 tes modul dan24 tes visual/interaksi lulus lokal serta Windows. Uji tambahan pada390 px tidak menemukan overflow horizontal. Pengujian browser memakai IPC contoh dan tidak membuktikan save/cloud nyata.
+
+Repository terverifikasi privat. Workflow verifikasi tetap menyediakan artifact installer/portable terpisah, tetapi melewati publikasi rilis publik. Workflow visual memakai paket dari build yang memicunya dan checkout SHA yang sama, bukan paket 0.2.2 yang dipatok sebelumnya. Pengemasan renderer pada runner mencapai batas heap sekitar2 GB; NODE_OPTIONS4 GB diterapkan hanya pada langkah build dan tidak mengubah runtime aplikasi pengguna.
+
+Build dan paket 0.2.3 terverifikasi: [build 41244821443](https://github.com/krisnapy/hydra-auto-save/actions/runs/41244821443), [verifikasi 41245568250](https://github.com/krisnapy/hydra-auto-save/actions/runs/41245568250), [visual 41245568264](https://github.com/krisnapy/hydra-auto-save/actions/runs/41245568264). Seluruh70 tes modul,24 tes UI, typecheck Hydra, startup unpacked/portable, tray dan halaman game native lulus. [Galeri dan batas pengujian](pengujian-tampilan.md) mencatat sumber serta unduhan privat. Pengemasan berhasil setelah batas heap build dinaikkan. Tes progres lama diperbarui agar mendukung useRef dan memeriksa penyegaran sekali per hasil operasi.
 
 ## Pemeriksaan backup dan status jeda aman — 0.2.2
 

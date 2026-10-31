@@ -11,6 +11,8 @@ Repository saat ini privat. Paket baru tersedia melalui workflow [Verify Windows
 - **Hydra-Personal-Backup-Installer-Windows-x64**: ekstrak ZIP dan jalankan berkas `setup.exe` di dalamnya.
 - **Hydra-Personal-Backup-Portable-Windows-x64**: ekstrak ZIP dan jalankan berkas `portable.exe`.
 
+Paket **0.2.3 terverifikasi**: [Installer](https://github.com/krisnapy/hydra-auto-save/actions/runs/41245568250/artifacts/13059023197) · [Portable](https://github.com/krisnapy/hydra-auto-save/actions/runs/41245568250/artifacts/13059352420) · [Galeri tampilan](https://github.com/krisnapy/hydra-auto-save/actions/runs/41245568264/artifacts/13059601320).
+
 Node.js dan Ludusavi tidak perlu dipasang terpisah. Paket menyertakan runtime dan Ludusavi. Artifact berlaku 30 hari. Publikasi rilis publik dilewati selama repository privat; checksum dan pengujian Windows tetap berjalan.
 
 0.2.3 memperbarui bagian backup di halaman game: lokasi save di kiri, kartu status/tindakan di kanan, riwayat dibuka melalui Pulihkan, dan pilihan lanjutan masuk menu ⋯. Pada jendela sempit tampilan menjadi satu kolom. Proses backup, konfirmasi pemulihan dan backup pengaman tetap menggunakan layanan yang sama. Navigasi serta tampilan halaman lain Hydra tetap mengikuti launcher.
@@ -78,7 +80,7 @@ Mematikan Auto Backup menghentikan penjadwalan berikutnya. Operasi yang sudah be
 
 ## Batas versi ini
 
-Pengujian tampilan halaman game tersedia dalam [galeri dan laporan visual](docs/pengujian-tampilan.md): 20 pemeriksaan panel/interaksi pada dua ukuran jendela serta screenshot halaman game di aplikasi Windows telah lulus. Skenario backup/pemulihan visual memakai data contoh; belum menggantikan uji save game nyata.
+Pengujian tampilan halaman game tersedia dalam [galeri dan laporan visual](docs/pengujian-tampilan.md): 24 pemeriksaan panel/interaksi pada dua ukuran jendela serta screenshot halaman game di aplikasi Windows telah lulus. Skenario backup/pemulihan visual memakai data contoh; belum menggantikan uji save game nyata.
 
 - Installer dan portable `.exe` berhasil dibuat. Aplikasi portable berhasil dibuka di Windows CI; layanan backup, renderer lokal, pengaturan backup, dan Ludusavi bawaan terverifikasi. Instalasi interaktif di PC pengguna, game nyata, dan sinkronisasi OneDrive/Google Drive/Dropbox/pCloud belum diuji.
 - Sebanyak 70 pengujian lulus di Windows dan lokal. Pemeriksaan tipe seluruh Hydra terintegrasi serta build Windows lulus. Ini belum membuktikan konsistensi save semua game.
