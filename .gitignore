@@ -1,0 +1,6 @@
+node_modules/
+.demo/
+.demo-*/
+.verification/
+*.tsbuildinfo
+dist/
