@@ -30,3 +30,12 @@ jobs:
           Expand-Archive ludusavi.zip -DestinationPath ludusavi
       - name: Reproduce original timeout, test fix, and check reported IDs
         run: node scripts/check-ludusavi.mjs ludusavi/ludusavi.exe --live-manifest
+      - name: Check corrected Steam ID 1245620 against current manifest
+        shell: pwsh
+        run: |
+          $diagnosticConfig = Join-Path $env:RUNNER_TEMP 'ludusavi-corrected-id'
+          New-Item -ItemType Directory -Force $diagnosticConfig | Out-Null
+          & ./ludusavi/ludusavi.exe --config $diagnosticConfig manifest update
+          if ($LASTEXITCODE -ne 0) { throw 'Manifest update failed' }
+          '' | & ./ludusavi/ludusavi.exe --config $diagnosticConfig --no-manifest-update find --api --backup --steam-id 1245620
+          if ($LASTEXITCODE -ne 0) { throw 'Corrected Steam ID was not recognized' }
