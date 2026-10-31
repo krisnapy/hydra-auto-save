@@ -1,0 +1,56 @@
+name: Verify Windows package
+
+on:
+  workflow_run:
+    workflows: [Windows installer]
+    types: [completed]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  launch:
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: windows-2022
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.21.0
+      - uses: actions/download-artifact@v4
+        with:
+          name: Hydra-Personal-Backup-Windows-x64
+          path: package
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify checksums and open portable application
+        shell: pwsh
+        run: |
+          Get-Content package/SHA256SUMS.txt | ForEach-Object {
+            $hash, $file = $_ -split '  ', 2
+            $actual = (Get-FileHash (Join-Path package $file) -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($actual -ne $hash) { throw "Checksum mismatch: $file" }
+          }
+          $portable = (Get-ChildItem package/*-portable.exe).FullName
+          if (!$portable) { throw 'Portable application is missing' }
+          node scripts/smoke-windows.mjs $portable package
+          if ($LASTEXITCODE -ne 0) { throw 'Packaged application startup failed' }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Hydra-Personal-Backup-Windows-Verified
+          path: package/
+          retention-days: 30
+          compression-level: 0
+      - name: Startup diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Windows-startup-diagnostics
+          path: |
+            package/startup.log
+            package/*.png
+          if-no-files-found: ignore
