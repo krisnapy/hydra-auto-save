@@ -28,7 +28,7 @@ const phaseLabels: Record<string, string> = {
 const phaseLabel = (phase: string) => phase.startsWith("safety-") ? `Backup pengaman: ${phaseLabels[phase.slice(7)] ?? phase.slice(7)}` : phaseLabels[phase] ?? phase;
 
 
-export function BackupProgressPanel({ gameId, busy }: { gameId?: string; busy: boolean }) {
+export function BackupProgressPanel({ gameId, busy, compact = false }: { gameId?: string; busy: boolean; compact?: boolean }) {
   const [progress, setProgress] = useState<BackupProgress>({ operations: [] });
   useEffect(() => {
     let disposed = false;
@@ -69,15 +69,100 @@ export function BackupProgressPanel({ gameId, busy }: { gameId?: string; busy: b
           </div>
           {!determinate && typeof operation.completed === "number" && <p>{operation.completed} file telah diperiksa pada tahap ini</p>}
           {determinate && <p>{operation.completed ?? 0} dari {operation.total} {operation.phase === "restore-replacing" ? "lokasi" : "file"} pada tahap ini</p>}
-          <small>Mulai {new Date(operation.startedAt).toLocaleTimeString()}</small>
+          {!compact && <small>Mulai {new Date(operation.startedAt).toLocaleTimeString()}</small>}
         </div>;
       })}
-    </div> : <p role="status">{busy ? "Menyiapkan permintaan…" : "Tidak ada operasi yang berjalan."}</p>}
-    {progress.lastOperation?.kind && <p role="status">
+    </div> : busy || !compact ? <p role="status">{busy ? "Menyiapkan permintaan…" : "Tidak ada operasi yang berjalan."}</p> : null}
+    {!compact && progress.lastOperation?.kind && <p role="status">
       {operationLabels[progress.lastOperation.kind] ?? progress.lastOperation.kind} terakhir: {progress.lastOperation.status === "failed" ? "gagal" : "selesai"} · {new Date(progress.lastOperation.at).toLocaleString()}
       {progress.lastOperation.detail && ` — ${progress.lastOperation.detail}`}
     </p>}
   </>;
+}
+
+const shortFolder = (value: string) => value.split(/[\\/]+/).filter(Boolean).slice(-2).join(" › ");
+const backupDate = (value: string) => {
+  const date = new Date(value);
+  return date.toDateString() === new Date().toDateString()
+    ? `Hari ini, ${date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
+    : date.toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
+};
+
+function GameBackupView({ snapshot, busy, opening, error, message, gameId, action, openLocation }: {
+  snapshot: BackupSnapshot; busy: boolean; opening: boolean; error: string; message: string; gameId: string;
+  action: (name: string, values?: Record<string, unknown>) => Promise<void>;
+  openLocation: (name: "open-save" | "open-backup" | "open-recovery", rootId?: string) => Promise<void>;
+}) {
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [optionsOpen, setOptionsOpen] = useState(false);
+  const latest = snapshot.versions.find(version => !version.safety);
+  const ready = Boolean(snapshot.destination && snapshot.roots.length);
+  const blocked = busy || Boolean(snapshot.recovery);
+  const failed = snapshot.status.status === "failed";
+  const badge = snapshot.recovery ? "Pemulihan terputus" : failed ? "Backup gagal" : !ready ? "Belum diatur" : !snapshot.enabled ? "Auto Backup nonaktif" : "Auto Backup aktif";
+  return <section className="personal-backup personal-backup--game" aria-label="Personal Cloud Backup">
+    <div className="personal-backup__context">
+      <p className="personal-backup__eyebrow">SAVE GAME</p>
+      <h3>Backup pribadi</h3>
+      <p className="personal-backup__muted">Kelola salinan progres game ini.</p>
+      <div className="personal-backup__folder-group">
+        <h4>Lokasi save</h4>
+        {!snapshot.roots.length && <p className="personal-backup__muted">Lokasi save belum dikenali. Pilih lokasi atau jalankan deteksi.</p>}
+        {snapshot.saveFolders.map(folder => <div key={folder.rootId} className="personal-backup__folder">
+          <span title={folder.path}>{shortFolder(folder.path)}</span>
+          <button disabled={opening} onClick={() => void openLocation("open-save", folder.rootId)}>Buka folder save</button>
+        </div>)}
+      </div>
+      <details className="personal-backup__details"><summary>Detail lokasi dan aktivitas</summary>
+        <h4>Folder save lengkap</h4>
+        {snapshot.saveFolders.map(folder => <p key={folder.rootId}>{folder.path}</p>)}
+        <h4>Folder backup game ini</h4><p>{snapshot.backupDirectory || "Folder backup belum dipilih"}</p>
+        <button disabled={opening || !snapshot.backupDirectory} onClick={() => void openLocation("open-backup")}>Buka lokasi backup</button>
+        <h4>Aktivitas terbaru</h4>
+        {!snapshot.activity.length && <p>Belum ada aktivitas backup.</p>}
+        <ul>{snapshot.activity.slice(0, 10).map((item, index) => <li key={`${item.at}-${index}`}>{new Date(item.at).toLocaleString()} · {labels[item.status] ?? item.status}{item.detail && ` — ${item.detail}`}</li>)}</ul>
+      </details>
+    </div>
+    <div className="personal-backup__card">
+      <header><h3><span className="personal-backup__cloud" aria-hidden="true">☁</span> Personal Cloud</h3><span className={`personal-backup__badge${failed || snapshot.recovery ? " personal-backup__badge--warning" : ""}`}>{badge}</span></header>
+      {error && <p role="alert" className="personal-backup__error">{error}</p>}
+      {snapshot.storage?.warning && <p role="alert" className="personal-backup__warning">{snapshot.storage.detail}{typeof snapshot.storage.availableBytes === "number" && ` Tersisa ${(snapshot.storage.availableBytes / 1024 ** 3).toFixed(2)} GB.`}</p>}
+      {snapshot.recovery && <div role="alert" className="personal-backup__warning">
+        <strong>Pemulihan terputus</strong><p>Backup dan pemulihan baru diblokir. Tutup game sebelum melanjutkan.</p>
+        <p>{snapshot.recovery.automatic ? snapshot.recovery.committed ? "Hasil pemulihan sebelumnya akan diperiksa." : "Penanganan akan mencoba mengembalikan kondisi sebelumnya dan mempertahankan file pengaman." : "Catatan lama atau rusak memerlukan pemeriksaan manual. Jangan hapus catatan atau file hydra-previous/hydra-interrupted."}</p>
+        <div className="personal-backup__actions"><button disabled={opening} onClick={() => void openLocation("open-recovery")}>Buka catatan pemulihan</button>{snapshot.recovery.automatic && <button disabled={busy} onClick={() => void action("recover")}>Tangani pemulihan</button>}</div>
+      </div>}
+      <div className="personal-backup__summary">
+        <p className="personal-backup__muted">{latest ? "Backup lokal terakhir" : "Belum ada backup lengkap"}</p>
+        <p className="personal-backup__latest">{latest ? backupDate(latest.createdAt) : "Lindungi progres Anda"}</p>
+        <p className="personal-backup__muted">{snapshot.versions.length ? `${snapshot.versions.length} versi di perangkat ini` : ready ? "Buat salinan save pertama Anda." : "Atur lokasi save dan folder backup untuk mulai."}</p>
+      </div>
+      <BackupProgressPanel key={gameId} gameId={gameId} busy={busy} compact />
+      {snapshot.status.status !== "waiting" && !(failed && error) && <p role={failed ? "alert" : "status"} className={failed ? "personal-backup__error" : "personal-backup__muted"}>{labels[snapshot.status.status] ?? snapshot.status.status}{snapshot.status.detail && ` — ${snapshot.status.detail}`}</p>}
+      {message && <p role="status" className="personal-backup__feedback">{message}</p>}
+      <div className="personal-backup__actions personal-backup__primary-actions">
+        <button className="personal-backup__primary" disabled={blocked || !ready} onClick={() => void action("backup")}>Backup sekarang</button>
+        <button disabled={blocked || !snapshot.versions.length} aria-expanded={historyOpen} onClick={() => setHistoryOpen(value => !value)}>Pulihkan</button>
+        <button className="personal-backup__more" aria-label="Pilihan backup" aria-expanded={optionsOpen} onClick={() => setOptionsOpen(value => !value)}>⋯</button>
+      </div>
+      {!ready && <div className="personal-backup__setup">
+        {!snapshot.destination && <p>Pilih folder backup di Settings → Personal Cloud Backup.</p>}
+        {!snapshot.roots.length && <div className="personal-backup__actions"><button disabled={busy || !snapshot.ludusavi} onClick={() => void action("detect")}>Deteksi lokasi save</button><button disabled={busy} onClick={() => void action("manual", { kind: "directory" })}>Pilih folder save</button></div>}
+      </div>}
+      {optionsOpen && <div className="personal-backup__options" role="group" aria-label="Pengaturan save">
+        <button disabled={busy || !snapshot.ludusavi} onClick={() => void action("detect")}>Deteksi ulang lokasi save</button>
+        <button disabled={busy} onClick={() => void action("manual", { kind: "directory" })}>Pilih folder save</button>
+        <button disabled={busy} onClick={() => void action("manual", { kind: "file" })}>Pilih file save</button>
+        <button disabled={opening || !snapshot.backupDirectory} onClick={() => void openLocation("open-backup")}>Buka folder backup</button>
+      </div>}
+      {historyOpen && <div className="personal-backup__history">
+        <div className="personal-backup__history-heading"><h4>Pilih versi pemulihan</h4><button onClick={() => setHistoryOpen(false)} aria-label="Tutup riwayat">Tutup</button></div>
+        <p className="personal-backup__muted">Tutup game terlebih dahulu. Save saat ini akan dicadangkan sebelum diganti. Konfirmasi muncul setelah memilih versi.</p>
+        <ul className="personal-backup__versions">{snapshot.versions.map(version => <li key={version.id}><div><strong>{backupDate(version.createdAt)}</strong><p>{version.files} file{version.safety ? " · Backup pengaman" : version.id === latest?.id ? " · Terbaru" : ""}</p></div><button disabled={blocked} onClick={() => void action("restore", { versionId: version.id })} aria-label={`Pulihkan versi ${new Date(version.createdAt).toLocaleString()}${version.safety ? " backup pengaman" : ""}`}>Pilih versi</button></li>)}</ul>
+      </div>}
+      <p className="personal-backup__cloud-note">Folder sinkronisasi pribadi · Status unggahan cloud belum diverifikasi.</p>
+    </div>
+  </section>;
 }
 
 export function PersonalCloudBackup({ gameId }: { gameId?: string }) {
@@ -143,6 +228,9 @@ export function PersonalCloudBackup({ gameId }: { gameId?: string }) {
     catch (failure) { if (mounted.current) setError(String(failure)); }
     finally { if (mounted.current) setOpening(false); }
   };
+  if (gameId) return snapshot
+    ? <GameBackupView key={gameId} {...{ snapshot, busy, opening, error, message, gameId, action, openLocation }} />
+    : <section className="personal-backup" aria-label="Personal Cloud Backup"><h3>Personal Cloud</h3><p role={error ? "alert" : "status"}>{error || "Memuat status backup…"}</p></section>;
   const guideGame = snapshot?.setup.games.find(game => game.id === selectedGame) ?? snapshot?.setup.games[0];
   const showGuide = guideOpen || (!snapshot?.setup.completed && !guideDismissed);
   return <section className="personal-backup" aria-label="Personal Cloud Backup">
@@ -182,23 +270,7 @@ export function PersonalCloudBackup({ gameId }: { gameId?: string }) {
         <button disabled={busy || !snapshot.ludusavi} onClick={() => void action("manifest")}>Perbarui database lokasi save</button>
         <label>Riwayat per game pada perangkat ini <select disabled={busy} value={snapshot.retention} onChange={event => void action("configure", { enabled: snapshot.enabled, retention: Number(event.target.value) })}>{[5, 10, 20, 50, 100].map(value => <option key={value} value={value}>{value} versi</option>)}</select></label>
         <p>Backup pengaman sebelum pemulihan disimpan terpisah dari batas riwayat dan tidak dihapus otomatis.</p>
-      </> : <>
-        <p role="status"><strong>{!snapshot.enabled ? "Auto Backup nonaktif" : labels[snapshot.status.status] ?? snapshot.status.status}</strong>{snapshot.status.detail && ` — ${snapshot.status.detail}`}</p>
-        <div className="personal-backup__actions">
-          <button disabled={busy || Boolean(snapshot.recovery) || !snapshot.destination || !snapshot.roots.length} onClick={() => void action("backup")}>Backup sekarang</button>
-          <button disabled={busy || !snapshot.ludusavi} onClick={() => void action("detect")}>Deteksi lokasi save</button>
-          <button disabled={busy} onClick={() => void action("manual", { kind: "directory" })}>Pilih folder save</button>
-          <button disabled={busy} onClick={() => void action("manual", { kind: "file" })}>Pilih file save</button>
-        </div>
-        {!snapshot.destination && <p>Pilih folder backup di Settings → Personal Cloud Backup.</p>}
-        <h4>Lokasi save</h4>
-        {!snapshot.roots.length && <p>Lokasi save belum dikenali. Jalankan deteksi atau pilih lokasi secara manual.</p>}
-        <ul className="personal-backup__locations">{snapshot.saveFolders.map(folder => <li key={folder.rootId}><span>{folder.path}</span><button disabled={opening} onClick={() => void openLocation("open-save", folder.rootId)}>Buka folder save</button></li>)}</ul>
-        <div className="personal-backup__row"><div><strong>Lokasi backup game ini</strong><p>{snapshot.backupDirectory || "Folder backup belum dipilih"}</p></div><button disabled={opening || !snapshot.backupDirectory} onClick={() => void openLocation("open-backup")}>Buka lokasi backup</button></div>
-        <h4>Riwayat perangkat ini</h4>
-        {snapshot.versions.length === 0 && <p>Belum ada backup lengkap yang dapat dipulihkan.</p>}
-        <ul className="personal-backup__versions">{snapshot.versions.map(version => <li key={version.id}><div><strong>{new Date(version.createdAt).toLocaleString()}</strong><p>{version.files} file{version.safety ? " · Backup pengaman" : ""}</p></div><button disabled={busy || Boolean(snapshot.recovery)} onClick={() => void action("restore", { versionId: version.id })}>Pulihkan</button></li>)}</ul>
-      </>}
+      </> : null}
       <h4>Aktivitas terbaru</h4>
       {snapshot.activity.length === 0 && <p>Belum ada aktivitas backup.</p>}
       <ul>{snapshot.activity.slice(0, 10).map((item, index) => <li key={`${item.at}-${index}`}>{new Date(item.at).toLocaleString()} · {labels[item.status] ?? item.status}{!gameId && ` · ${item.gameId}`}{item.detail && ` — ${item.detail}`}</li>)}</ul>

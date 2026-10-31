@@ -58,14 +58,14 @@ try {
   await expect(panel).toBeVisible({ timeout: 45000 });
   await expect(panel.getByText('Lokasi save belum dikenali.', { exact: false })).toBeVisible();
   await expect(panel.getByRole('button', { name: 'Backup sekarang', exact: true })).toBeDisabled();
-  await expect(panel.getByRole('button', { name: 'Pulihkan', exact: true })).toHaveCount(0);
+  await expect(panel.getByRole('button', { name: 'Pulihkan', exact: true })).toBeDisabled();
   if (!await panel.evaluate(element => element.scrollWidth <= element.clientWidth + 1)) throw new Error('Panel melampaui lebar halaman game.');
   await panel.scrollIntoViewIfNeeded();
   await page.screenshot({ path: path.join(output, 'screenshots/windows-hydra-game-page.png'), animations: 'disabled' });
   await panel.screenshot({ path: path.join(output, 'screenshots/windows-hydra-game-panel.png'), animations: 'disabled' });
   await fs.writeFile(path.join(output, 'windows-game-page.json'), JSON.stringify({
-    passed: true, testedAt: new Date().toISOString(), applicationVersion: '0.2.2',
-    buildRun: 41234708380, applicationSource: 'e2e62a4be8f0e296710a06e7e06fe9ac493ac88b',
+    passed: true, testedAt: new Date().toISOString(), applicationVersion: JSON.parse(await fs.readFile('package.json', 'utf8')).version,
+    buildRun: process.env.TESTED_BUILD_RUN ?? null, applicationSource: process.env.TESTED_SOURCE ?? null,
     isolatedProfile: true, route: '/game/custom/:objectId', scenario: 'unconfigured',
     scope: 'Real packaged Hydra game page with a dummy custom game; no game execution, save backup, restore, or cloud upload.',
   }, null, 2));

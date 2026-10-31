@@ -19,7 +19,7 @@ for (const scenario of cases) test(`tampilan ${scenario}`, async ({ page }, info
   if (scenario === 'unconfigured') {
     await expect(section.getByText('Lokasi save belum dikenali.', { exact: false })).toBeVisible();
     await expect(section.getByRole('button', { name: 'Backup sekarang', exact: true })).toBeDisabled();
-    await expect(section.getByRole('button', { name: 'Pulihkan', exact: true })).toHaveCount(0);
+    await expect(section.getByRole('button', { name: 'Pulihkan', exact: true })).toBeDisabled();
   } else {
     await expect(section.getByRole('button', { name: 'Buka folder save', exact: true })).toHaveCount(1);
     await expect(section.getByText('slot-1.sav', { exact: false })).toHaveCount(0);
@@ -30,10 +30,11 @@ for (const scenario of cases) test(`tampilan ${scenario}`, async ({ page }, info
   }
   if (scenario === 'complete') await expect(section.getByText('Backup lokal selesai', { exact: true }).first()).toBeVisible();
   if (scenario === 'history') {
-    await expect(section.getByRole('button', { name: 'Pulihkan', exact: true })).toHaveCount(3);
+    await section.getByRole('button', { name: 'Pulihkan', exact: true }).click();
+    await expect(section.getByRole('button', { name: /^Pulihkan versi/ })).toHaveCount(3);
     await expect(section.getByText('10 file · Backup pengaman')).toBeVisible();
   }
-  if (scenario === 'error') await expect(section.getByText('Ruang penyimpanan tidak cukup.', { exact: false }).first()).toBeVisible();
+  if (scenario === 'error') await expect(section.getByRole('alert').first()).toBeVisible();
   expect(await section.evaluate(element => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   const overflow = await section.locator('button').evaluateAll(buttons => buttons.some(button => button.scrollWidth > button.clientWidth + 2));
@@ -51,11 +52,12 @@ test('backup dan pemulihan memperbarui panel; pembatalan tidak memulihkan', asyn
   await section.getByRole('button', { name: 'Backup sekarang', exact: true }).click();
   await expect(section.getByRole('progressbar')).toBeVisible();
   await expect(section.getByText('Backup lokal selesai. Riwayat diperbarui.', { exact: true })).toBeVisible();
+  await section.getByRole('button', { name: 'Pulihkan', exact: true }).click();
   page.once('dialog', dialog => dialog.dismiss());
-  await section.getByRole('button', { name: 'Pulihkan', exact: true }).first().click();
+  await section.getByRole('button', { name: /^Pulihkan versi/ }).first().click();
   await expect(section.getByText('Pemulihan dibatalkan.', { exact: true })).toBeVisible();
   page.once('dialog', dialog => dialog.accept());
-  await section.getByRole('button', { name: 'Pulihkan', exact: true }).first().click();
+  await section.getByRole('button', { name: /^Pulihkan versi/ }).first().click();
   await expect(section.getByRole('progressbar')).toBeVisible();
   await expect(section.getByText('Pemulihan selesai.', { exact: true })).toBeVisible();
 });
@@ -76,6 +78,19 @@ test('progres berubah mengikuti status operasi', async ({ page }) => {
 test('kegagalan permintaan ditampilkan sebagai alert', async ({ page }) => {
   await visit(page, 'error');
   await panel(page).getByRole('button', { name: 'Backup sekarang', exact: true }).click();
-  await expect(panel(page).getByRole('alert')).toContainText('Ruang penyimpanan tidak cukup');
+  await expect(panel(page).getByRole('alert').first()).toContainText('Ruang penyimpanan tidak cukup');
   await expect(panel(page).getByRole('button', { name: 'Backup sekarang', exact: true })).toBeEnabled();
+});
+
+ test('riwayat dan options tersembunyi; pilihan lokasi tetap dapat diakses', async ({ page }) => {
+  await visit(page, 'complete');
+  const section = panel(page);
+  await expect(section.getByRole('button', { name: /^Pulihkan versi/ })).toHaveCount(0);
+  await expect(section.getByRole('button', { name: 'Pilih file save', exact: true })).toHaveCount(0);
+  await section.getByRole('button', { name: 'Pilihan backup' }).click();
+  await expect(section.getByRole('button', { name: 'Pilih file save', exact: true })).toBeVisible();
+  await section.getByRole('button', { name: 'Pulihkan', exact: true }).click();
+  await expect(section.getByRole('button', { name: /^Pulihkan versi/ })).toHaveCount(1);
+  await section.getByRole('button', { name: 'Tutup riwayat' }).click();
+  await expect(section.getByRole('button', { name: /^Pulihkan versi/ })).toHaveCount(0);
 });

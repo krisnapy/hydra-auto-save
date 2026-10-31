@@ -1,4 +1,4 @@
-# Hydra Personal Cloud Backup — 0.2.2
+# Hydra Personal Cloud Backup — 0.2.3
 
 Implementasi awal modul backup untuk salinan kode **Hydra Launcher 4.3.0 di Windows**. Tersedia installer dan aplikasi portable Windows x64 dengan runtime serta Ludusavi bawaan. Build, pemeriksaan tipe seluruh Hydra, dan uji membuka aplikasi/pengaturan backup di Windows telah berhasil. Pengujian game nyata dan penyedia cloud masih diperlukan.
 
@@ -6,16 +6,16 @@ Draft awal tetap tersedia di [docs/rancangan-auto-backup.md](docs/rancangan-auto
 
 ## Paket Windows tanpa Node.js
 
-Pilih salah satu unduhan langsung dari Releases, **tanpa login GitHub**:
+Repository saat ini privat. Paket baru tersedia melalui workflow [Verify Windows package](https://github.com/krisnapy/hydra-auto-save/actions/workflows/verify-windows.yml) setelah build dan pemeriksaan berhasil. Login dengan akun yang memiliki akses, lalu unduh salah satu artifact:
 
-- [Installer Windows x64](https://github.com/krisnapy/hydra-auto-save/releases/download/v0.2.2/Hydra-Personal-Backup-0.2.2-hydra-4.3.0-windows-x64-setup.exe): jalankan untuk memasang aplikasi.
-- [Portable Windows x64](https://github.com/krisnapy/hydra-auto-save/releases/download/v0.2.2/Hydra-Personal-Backup-0.2.2-hydra-4.3.0-windows-x64-portable.exe): jalankan untuk langsung mencoba.
+- **Hydra-Personal-Backup-Installer-Windows-x64**: ekstrak ZIP dan jalankan berkas `setup.exe` di dalamnya.
+- **Hydra-Personal-Backup-Portable-Windows-x64**: ekstrak ZIP dan jalankan berkas `portable.exe`.
 
-Tidak perlu mengekstrak ZIP atau memasang Node.js dan Ludusavi. [Halaman rilis 0.2.2](https://github.com/krisnapy/hydra-auto-save/releases/tag/v0.2.2) menyediakan panduan dan checksum SHA-256. Ini versi uji awal berbasis Hydra 4.3.0; aplikasi belum ditandatangani secara digital. Fondasi 0.2.0 menambahkan pemantauan perubahan save dengan penggabungan perubahan berdekatan dan pemeriksaan cadangan, penanganan save yang masih ditulis, peringatan ruang penyimpanan, panduan pengaturan awal, serta penanganan pemulihan terputus. Cache riwayat, akses lokasi melalui Explorer, dan perbaikan antrean/tray dari versi sebelumnya tetap disertakan. Pada 0.2.1, progres diperbarui lebih halus melalui status di memori dan lokasi save ditampilkan per folder. Pada 0.2.2, save yang tidak berubah melewati jeda kestabilan; pembacaan ulang ditampilkan terpisah, perubahan singkat dicoba ulang secara terbatas, dan sumber yang terus berubah diberi jeda percobaan serta keterangan lokasi. Checksum diperiksa sebelum publikasi.
+Node.js dan Ludusavi tidak perlu dipasang terpisah. Paket menyertakan runtime dan Ludusavi. Artifact berlaku 30 hari. Publikasi rilis publik dilewati selama repository privat; checksum dan pengujian Windows tetap berjalan.
 
-Build perbaikan: [41234708380](https://github.com/krisnapy/hydra-auto-save/actions/runs/41234708380). Uji aplikasi dan publikasi: [41235274406](https://github.com/krisnapy/hydra-auto-save/actions/runs/41235274406). Uji Ludusavi asli dan Steam ID: [41218017829](https://github.com/krisnapy/hydra-auto-save/actions/runs/41218017829). Berkas Releases tidak mengikuti kedaluwarsa 30 hari artifact Actions.
+0.2.3 memperbarui bagian backup di halaman game: lokasi save di kiri, kartu status/tindakan di kanan, riwayat dibuka melalui Pulihkan, dan pilihan lanjutan masuk menu ⋯. Pada jendela sempit tampilan menjadi satu kolom. Proses backup, konfirmasi pemulihan dan backup pengaman tetap menggunakan layanan yang sama. Navigasi serta tampilan halaman lain Hydra tetap mengikuti launcher.
 
-Workflow **Windows installer** memakai cache dependensi dan komponen native dengan kunci sumber Hydra, platform, runtime, dan lockfile; cache diperiksa dengan Electron sebelum dipakai. Cache baru perlu diisi pada build pertama. Workflow ini membangun paket dari sumber Hydra 4.3.0 yang dipatok. Workflow **Verify Windows package** memeriksa checksum, membuka aplikasi, dan mengunggah installer serta portable sebagai unduhan terpisah, lalu menerbitkan rilis publik setelah pemeriksaan berhasil. Lihat [hasil build](https://github.com/krisnapy/hydra-auto-save/actions/workflows/windows.yml) dan [hasil verifikasi](https://github.com/krisnapy/hydra-auto-save/actions/workflows/verify-windows.yml) untuk paket berikutnya.
+Workflow **Windows installer** membangun sumber Hydra 4.3.0 yang dipatok dan memeriksa cache dependensi sebelum digunakan. **Verify Windows package** memeriksa checksum, startup dan menyediakan unduhan terpisah. **Game page visual tests** menguji komponen terbaru saat push, lalu membuka paket Windows dari build yang memicunya setelah build berhasil. Ini versi uji awal; aplikasi belum ditandatangani secara digital dan game/cloud nyata tetap perlu diuji.
 
 Panduan pengguna: [panduan Windows](docs/panduan-windows.md). Tutup Hydra resmi sebelum memakai build ini; keduanya memakai profil lokal yang sama. Pilih folder instalasi berbeda. Build khusus ini memakai renderer lokal dan menonaktifkan pembaruan resmi otomatis agar integrasi backup tidak terganti. Keberhasilan build belum membuktikan pengujian semua game atau penyedia cloud.
 

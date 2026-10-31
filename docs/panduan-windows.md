@@ -73,3 +73,11 @@ Mulai 0.2.2, isi yang sama dengan backup normal terakhir dilewati setelah satu p
 Percobaan otomatis memakai jeda per game 5, 10, 20, 40 lalu maksimum 60 detik setelah percobaan gagal karena sumber sibuk/berubah. Ini waktu minimum; aktivitas save, antrean dan jadwal pemeriksaan dapat menundanya. Game lain tetap mendapat giliran. Backup manual atau setelah game ditutup dapat mencoba langsung. Keberhasilan atau pengaturan lokasi baru menghapus jeda game tersebut.
 
 Jika terus berulang setelah game ditutup, periksa lokasi yang disebut: folder yang dipilih terlalu luas dapat mencakup log/cache yang terus berubah, atau proses lain masih menggunakan file. Pastikan lokasi memang save game. Jangan menghapus file atau mengabaikan pemeriksaan integritas untuk memaksa backup. Jika file yang terkunci berada di tujuan, periksa aplikasi sinkronisasi cloud dan akses folder.
+
+## Panel halaman game (0.2.3)
+
+Lokasi save berada di kiri; kartu Personal Cloud di kanan menampilkan waktu backup lokal terakhir dan jumlah versi perangkat ini. Pada jendela sempit, kartu turun ke bawah. Klik **Backup sekarang** untuk membuat backup manual. Klik **Pulihkan**, pilih versi, lalu konfirmasi di dialog aplikasi; game harus ditutup dan backup pengaman dibuat sebelum penggantian.
+
+Menu **⋯** memuat deteksi ulang, pemilihan folder/file save, dan buka folder backup. **Detail lokasi dan aktivitas** menampilkan path lengkap serta catatan terbaru. Jika belum diatur, tombol deteksi/pilih folder langsung terlihat. Kegagalan, ruang penyimpanan, dan pemulihan terputus tetap ditampilkan tanpa membuka detail. Status unggahan cloud tidak diasumsikan dari keberhasilan backup lokal.
+
+Untuk repository privat, installer dan portable diunduh dari artifact workflow **Verify Windows package** dengan akun yang memiliki akses. Publikasi rilis publik dilewati saat repository privat.

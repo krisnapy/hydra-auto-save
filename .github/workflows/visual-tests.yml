@@ -6,7 +6,10 @@ on:
     paths:
       - 'tests/visual/**'
       - '.github/workflows/visual-tests.yml'
-      - 'integration/overlay/src/renderer/src/components/personal-cloud-backup/**'
+      - 'integration/overlay/src/renderer/src/components/personal-cloud-backup*'
+  workflow_run:
+    workflows: [Windows installer]
+    types: [completed]
   workflow_dispatch:
 
 permissions:
@@ -19,12 +22,14 @@ concurrency:
 
 jobs:
   visual:
+    if: github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: windows-2022
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22.21.0
@@ -39,15 +44,20 @@ jobs:
           npx --prefix tests/visual playwright install chromium
       - name: Test six panel states at two window sizes
         run: npx --prefix tests/visual playwright test -c tests/visual/playwright.config.mjs
-      # An existing verified package avoids rebuilding a 200 MB installer for test-only changes.
-      # This native check remains pinned to v0.2.2; browser tests use the current component.
+      # The native page uses the package from the successful build that triggered this run.
+      # Push/manual runs cover the current browser component without an old native package.
       - uses: actions/download-artifact@v4
+        if: github.event_name == 'workflow_run'
         with:
           name: Hydra-Personal-Backup-Windows-x64
           path: package
-          run-id: 41234708380
+          run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Verify package and test the real Windows game page
+        if: github.event_name == 'workflow_run'
+        env:
+          TESTED_BUILD_RUN: ${{ github.event.workflow_run.id }}
+          TESTED_SOURCE: ${{ github.event.workflow_run.head_sha }}
         shell: pwsh
         run: |
           Get-Content package/SHA256SUMS.txt | ForEach-Object {

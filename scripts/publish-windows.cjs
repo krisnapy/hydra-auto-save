@@ -44,7 +44,11 @@ module.exports = async ({ github, context, core }) => {
     name: `Hydra Personal Backup ${version} — Windows x64`, draft: true, prerelease: true,
     body: [
       'Versi uji awal berbasis Hydra Launcher 4.3.0.', '',
-      '## Perbaikan pemeriksaan backup 0.2.2',
+      '## Panel backup ringkas 0.2.3',
+      '- Lokasi save di kiri dan kartu backup di kanan; otomatis satu kolom pada jendela sempit.',
+      '- Status, waktu backup terakhir, jumlah versi dan dua tindakan utama lebih mudah dibaca.',
+      '- Pulihkan membuka riwayat; menu pilihan menampung pengaturan save. Konfirmasi dan backup pengaman tetap berlaku.',
+      '', '## Perbaikan pemeriksaan backup 0.2.2',
       '- Save yang isinya sama dengan backup normal terakhir langsung dilewati setelah pembacaan awal, tanpa jeda kestabilan atau pembacaan sumber kedua.',
       '- Status jeda aman dipisahkan dari pembacaan ulang; jumlah file yang sudah diperiksa ditampilkan selama pemindaian.',
       '- Perubahan singkat mendapat maksimum tiga pemeriksaan kestabilan. Jika terus berubah, backup dihentikan dengan lokasi penyebab dan tidak dipublikasikan.',
