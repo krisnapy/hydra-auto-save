@@ -78,7 +78,7 @@ jobs:
             }
             const { data: release } = await github.rest.repos.createRelease({
               owner, repo, tag_name: tag,
-              target_commitish: '6f6125393c1f611cd8fc2256d0327a978b224141',
+              target_commitish: context.sha,
               name: 'Hydra Personal Backup 0.1.0 — Windows x64',
               draft: true, prerelease: true,
               body: [
@@ -92,7 +92,7 @@ jobs:
                 '- Aplikasi belum ditandatangani secara digital.',
                 '',
                 '## Verifikasi dan batas pengujian',
-                'Checksum SHA-256 diperiksa sebelum publikasi. File aplikasi sama dengan paket yang berhasil diuji di Windows CI: aplikasi portable, renderer lokal, IPC backup, halaman pengaturan, dan Ludusavi bawaan.',
+                'Sumber executable: commit `6f6125393c1f611cd8fc2256d0327a978b224141`, verifikasi paket run `41195867955`. Tag rilis menunjuk commit publikasi. Checksum SHA-256 diperiksa sebelum publikasi. File aplikasi sama dengan paket yang berhasil diuji di Windows CI: aplikasi portable, renderer lokal, IPC backup, halaman pengaturan, dan Ludusavi bawaan.',
                 '31 pengujian dan pemeriksaan tipe Hydra lulus. Instalasi interaktif, save game nyata, dan sinkronisasi penyedia cloud belum diuji. Backup lokal selesai tidak menjamin unggahan cloud selesai.',
                 '',
                 '[Build Windows](https://github.com/krisnapy/hydra-auto-save/actions/runs/41194991037) · [Uji aplikasi](https://github.com/krisnapy/hydra-auto-save/actions/runs/41195867955)',
