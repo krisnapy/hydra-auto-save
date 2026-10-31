@@ -27,3 +27,9 @@ Tutup game dan Hydra, termasuk ikon di dekat jam. Jika memakai installer, jalank
 - Jika game/Steam ID belum dikenali, gunakan **Pilih folder save** atau **Pilih file save**. Pilih save asli game, bukan folder tujuan backup cloud.
 - Setelah lokasi dipilih, tekan **Backup sekarang** dan periksa **Backup lokal selesai**.
 - Versi 0.1.0 memiliki masalah pencarian Steam ID yang dapat menunggu input sampai batas waktu. Perbaikan ada pada 0.1.1. Pengguna tidak perlu menjalankan perintah Ludusavi sendiri.
+
+## Melihat operasi berjalan (0.1.2)
+
+Settings dan halaman game menampilkan antrean serta tahap operasi yang sedang berjalan. Saat jumlah file diketahui, progress bar menunjukkan file yang selesai pada tahap tersebut; tahap pemindaian/verifikasi memakai indikator berjalan tanpa persentase keseluruhan. Waktu mulai, pembaruan tahap, dan hasil operasi terakhir ditampilkan. Jika save tidak berubah, pemeriksaan selesai tanpa membuat versi baru.
+
+Permintaan pengaturan atau pemulihan yang dibuat saat backup aktif menunggu operasi saat ini selesai. Pemeriksaan otomatis berhenti sebelum game berikutnya untuk memberi giliran pada permintaan pengguna. Jangan tutup aplikasi selama penggantian save berlangsung.

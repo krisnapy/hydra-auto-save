@@ -212,3 +212,21 @@ test('path Windows dengan trailing space atau nama perangkat ditolak', async t =
     assert.throws(() => engine.source(roots, { rootId: roots[0].id, relative, hash: 'a'.repeat(64) }), /tidak aman/);
   }
 });
+
+test('tahap dan jumlah file dilaporkan untuk backup, backup pengaman, dan pemulihan', async t => {
+  const events = [];
+  const { engine, roots, file } = await fixture(t, { onProgress: (gameId, phase, completed, total) => events.push({ gameId, phase, completed, total }) });
+  const version = await engine.backup('steam:1', roots);
+  assert.ok(events.some(event => event.phase === 'scanning'));
+  assert.ok(events.some(event => event.phase === 'copying' && event.completed === 1 && event.total === 1));
+  assert.ok(events.some(event => event.phase === 'verifying'));
+  await fs.writeFile(file, 'changed');
+  events.length = 0;
+  await engine.restore('steam:1', roots, version.id, true);
+  assert.ok(events.some(event => event.phase === 'checking-restore'));
+  assert.ok(events.some(event => event.phase === 'safety-copying' && event.completed === 1));
+  assert.ok(events.some(event => event.phase === 'restore-staging' && event.completed === 1 && event.total === 1));
+  assert.ok(events.some(event => event.phase === 'restore-replacing' && event.completed === 1 && event.total === 1));
+  assert.equal(events.at(-1).phase, 'restore-cleanup');
+  assert.equal(await fs.readFile(file, 'utf8'), 'level-1');
+});

@@ -13,6 +13,17 @@ const labels: Record<string, string> = {
   failed: "Backup gagal", setup: "Perlu pengaturan", restored: "Pemulihan selesai",
 };
 
+const operationLabels: Record<string, string> = {
+  automatic: "Pemeriksaan otomatis", backup: "Backup", restore: "Pemulihan", settings: "Pengaturan", manual: "Pengaturan lokasi save", detect: "Deteksi lokasi save", manifest: "Pembaruan database",
+};
+const phaseLabels: Record<string, string> = {
+  queued: "Menunggu giliran; operasi yang berjalan akan diselesaikan dahulu", preparing: "Menyiapkan operasi", detecting: "Mencari lokasi save", manifest: "Mengunduh database lokasi save",
+  scanning: "Memeriksa isi save", stabilizing: "Menunggu penulisan save selesai", "checking-history": "Memeriksa riwayat backup", copying: "Menyalin dan memeriksa file",
+  verifying: "Memeriksa kembali sumber save", publishing: "Menyelesaikan versi backup", retention: "Merapikan riwayat backup", "checking-restore": "Memeriksa game dan integritas backup",
+  "restore-staging": "Menyiapkan file pemulihan", "restore-checking-source": "Memeriksa save sebelum penggantian", "restore-replacing": "Mengganti save", "restore-cleanup": "Menyelesaikan pemulihan", "rolling-back": "Mengembalikan kondisi save setelah kegagalan",
+};
+const phaseLabel = (phase: string) => phase.startsWith("safety-") ? `Backup pengaman: ${phaseLabels[phase.slice(7)] ?? phase.slice(7)}` : phaseLabels[phase] ?? phase;
+
 export function PersonalCloudBackup({ gameId }: { gameId?: string }) {
   const [snapshot, setSnapshot] = useState<BackupSnapshot>();
   const [busy, setBusy] = useState(false);
@@ -33,9 +44,27 @@ export function PersonalCloudBackup({ gameId }: { gameId?: string }) {
     mounted.current = true;
     setSnapshot(undefined);
     setError("");
-    void refresh();
-    const timer = setInterval(() => void refresh(), 10000);
-    return () => { mounted.current = false; requestNumber.current++; clearInterval(timer); };
+    let historyPending = true;
+    let progressPending = false;
+    void refresh().finally(() => { historyPending = false; });
+    const timer = setInterval(() => {
+      if (historyPending) return;
+      historyPending = true;
+      void refresh().finally(() => { historyPending = false; });
+    }, 10000);
+    const progress = async () => {
+      if (progressPending) return;
+      progressPending = true;
+      const sequence = requestNumber.current;
+      try {
+        const result = await window.personalBackup.invoke({ action: "snapshot", gameId, lightweight: true });
+        if (mounted.current && sequence === requestNumber.current) setSnapshot(previous => ({ ...result, versions: previous?.versions ?? [] }));
+      } catch { /* The full refresh reports connection errors. */ }
+      finally { progressPending = false; }
+    };
+    void progress();
+    const progressTimer = setInterval(() => void progress(), 1000);
+    return () => { mounted.current = false; requestNumber.current++; clearInterval(timer); clearInterval(progressTimer); };
   }, [refresh]);
   const action = async (name: string, values: Record<string, unknown> = {}) => {
     setBusy(true); setError(""); setMessage("");
@@ -46,6 +75,9 @@ export function PersonalCloudBackup({ gameId }: { gameId?: string }) {
         setSnapshot(result);
         if (name === "manifest") setMessage("Database lokasi save diperbarui.");
         if (name === "detect") setMessage("Lokasi save ditemukan.");
+        if (name === "backup") setMessage(result.lastOperation?.detail || "Backup lokal selesai. Riwayat diperbarui.");
+        if (name === "restore") setMessage(result.lastOperation?.kind === "restore" && result.lastOperation.status === "complete" ? "Pemulihan selesai." : "Pemulihan dibatalkan.");
+        if (["configure", "destination", "manual", "ludusavi"].includes(name)) setMessage("Pengaturan selesai diperbarui.");
       }
     } catch (failure) { if (mounted.current) setError(String(failure)); }
     finally { if (mounted.current) setBusy(false); }
@@ -55,7 +87,22 @@ export function PersonalCloudBackup({ gameId }: { gameId?: string }) {
     <p>Backup disimpan ke folder sinkronisasi milik Anda. Aplikasi cloud menangani unggahan.</p>
     {error && <p role="alert" className="personal-backup__error">{error}</p>}
     {message && <p role="status">{message}</p>}
+    {busy && <p role="status">Permintaan sedang diproses. Jika ada operasi lain, permintaan menunggu giliran.</p>}
     {snapshot && <>
+      {snapshot.operations?.length > 0 ? <div className="personal-backup__progress" aria-live="polite">
+        {snapshot.operations.map(operation => <div key={operation.id}>
+          <p><strong>{operationLabels[operation.kind] ?? operation.kind}{operation.title && ` · ${operation.title}`}</strong></p>
+          <p>{phaseLabel(operation.phase)}</p>
+          {typeof operation.total === "number" && operation.total > 0
+            ? <><progress max={operation.total} value={operation.completed ?? 0} aria-label={phaseLabel(operation.phase)} /><p>{operation.completed ?? 0} dari {operation.total} {operation.phase === "restore-replacing" ? "lokasi" : "file"} pada tahap ini</p></>
+            : <progress aria-label={phaseLabel(operation.phase)} />}
+          <small>Mulai {new Date(operation.startedAt).toLocaleTimeString()} · pembaruan tahap {new Date(operation.updatedAt).toLocaleTimeString()}</small>
+        </div>)}
+      </div> : <p role="status">Tidak ada operasi yang berjalan.</p>}
+      {snapshot.lastOperation && (!gameId || snapshot.lastOperation.gameId === gameId) && <p role="status">
+        {operationLabels[snapshot.lastOperation.kind] ?? snapshot.lastOperation.kind} terakhir: {snapshot.lastOperation.status === "failed" ? "gagal" : "selesai"} · {new Date(snapshot.lastOperation.at).toLocaleString()}
+        {snapshot.lastOperation.detail && ` — ${snapshot.lastOperation.detail}`}
+      </p>}
       {!gameId ? <>
         <label className="personal-backup__toggle"><input type="checkbox" checked={snapshot.enabled} disabled={busy} onChange={event => void action("configure", { enabled: event.target.checked, retention: snapshot.retention })} /> Auto Backup</label>
         <p>Aktif selama Hydra berjalan. Game Steam dan game PC kustom dengan executable yang diketahui didukung pada tahap awal.</p>

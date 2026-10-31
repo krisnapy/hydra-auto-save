@@ -18,7 +18,7 @@ registerEvent("personalBackup", async (event, request: unknown) => {
   if (!parent) throw new Error("Jendela utama tidak tersedia.");
   const gameId = typeof input.gameId === "string" ? string(input.gameId) : undefined;
   switch (input.action) {
-    case "snapshot": return controller.snapshot(gameId);
+    case "snapshot": return controller.snapshot(gameId, input.lightweight === true);
     case "configure": {
       if (typeof input.enabled !== "boolean" || !Number.isInteger(input.retention)) throw new Error("Pengaturan tidak valid.");
       await controller.configure({ enabled: input.enabled, retention: input.retention as number });

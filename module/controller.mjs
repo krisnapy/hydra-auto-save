@@ -12,6 +12,8 @@ export class BackupController {
     this.engine = null;
     this.lastDiscovery = new Map();
     this.status = new Map();
+    this.operations = new Map();
+    this.pendingControls = 0;
   }
   async init() {
     this.file = path.join(this.stateDirectory, 'settings.json');
@@ -26,10 +28,13 @@ export class BackupController {
     return this;
   }
   rebuild() {
-    this.engine = this.state.destination ? new BackupEngine({ destination: this.state.destination, deviceId: this.state.deviceId, stateDirectory: this.stateDirectory, retention: this.state.retention, stableMs: this.stableMs, assertStopped: this.assertStopped, onStatus: (id, status, detail) => this.setStatus(id, status, detail) }) : null;
+    this.engine = this.state.destination ? new BackupEngine({ destination: this.state.destination, deviceId: this.state.deviceId, stateDirectory: this.stateDirectory, retention: this.state.retention, stableMs: this.stableMs, assertStopped: this.assertStopped, onStatus: (id, status, detail) => this.setStatus(id, status, detail), onProgress: (id, phase, completed, total) => this.progress(id, phase, completed, total) }) : null;
   }
   setStatus(id, status, detail) {
     this.status.set(id, { status, detail });
+    if (['complete', 'failed'].includes(status) && [...this.operations.values()].some(item => item.gameId === id && item.kind === 'automatic')) {
+      this.lastOperation = { kind: 'automatic', gameId: id, status, detail, at: new Date().toISOString() };
+    }
     const last = this.state.activity.find(item => item.gameId === id);
     if (status !== 'preparing' && status !== 'waiting' && (status === 'complete' || status === 'restored' || !last || last.status !== status || last.detail !== (detail ?? ''))) {
       this.state.activity.unshift({ at: new Date().toISOString(), gameId: id, status, detail: detail ?? '' });
@@ -41,13 +46,44 @@ export class BackupController {
     this.saving = (this.saving ?? Promise.resolve()).catch(() => {}).then(() => atomicJson(this.file, this.state));
     return this.saving;
   }
-  async control(action) {
+  operation(kind, gameId, phase = 'queued') {
+    const id = randomUUID();
+    const now = new Date().toISOString();
+    const operation = { id, kind, gameId, title: this.state.games[gameId]?.title ?? gameId, phase, startedAt: now, updatedAt: now };
+    this.operations.set(id, operation);
+    return operation;
+  }
+  progress(gameId, phase, completed, total) {
+    const operation = [...this.operations.values()].find(item => item.gameId === gameId && item.phase !== 'queued');
+    if (operation) Object.assign(operation, { phase, completed, total, updatedAt: new Date().toISOString() });
+  }
+  async control(action, kind = 'settings', gameId) {
     if (this.stopping) throw new Error('Hydra sedang ditutup.');
-    if (this.active || this.engine?.jobs.size) throw new Error('Tunggu operasi backup atau pemulihan selesai.');
-    this.active = true;
-    this.controlJob = Promise.resolve().then(action);
-    try { return await this.controlJob; }
-    finally { this.active = false; this.controlJob = undefined; }
+    const operation = this.operation(kind, gameId);
+    this.pendingControls++;
+    const previous = this.controlTail ?? Promise.resolve();
+    const job = previous.catch(() => {}).then(async () => {
+      // Stop the automatic loop at the next game boundary, then drain existing work.
+      await this.tickJob?.catch(() => {});
+      await this.engine?.idle();
+      this.pendingControls--;
+      this.controlJob = job;
+      operation.phase = 'preparing';
+      operation.updatedAt = new Date().toISOString();
+      try {
+        const result = await action();
+        this.lastOperation = { kind, gameId, status: 'complete', at: new Date().toISOString(), detail: kind === 'backup' && !result ? 'Isi save tidak berubah; tidak membuat versi baru.' : undefined };
+        return result;
+      } catch (error) {
+        this.lastOperation = { kind, gameId, status: 'failed', at: new Date().toISOString(), detail: error.message };
+        throw error;
+      } finally {
+        this.operations.delete(operation.id);
+        this.controlJob = undefined;
+      }
+    });
+    this.controlTail = job;
+    return job;
   }
   configure(values) {
     // Let users stop future backups while an existing operation drains safely.
@@ -79,7 +115,7 @@ export class BackupController {
     this.rebuild();
     await this.save();
   }
-  manual(gameId, selections) { return this.control(() => this.manualInternal(gameId, selections)); }
+  manual(gameId, selections) { return this.control(() => this.manualInternal(gameId, selections), 'manual', gameId); }
   async manualInternal(gameId, selections) {
     const games = await this.getGames();
     if (!games.some(game => game.id === gameId)) throw new Error('Game tidak tersedia di pustaka.');
@@ -91,11 +127,14 @@ export class BackupController {
   }
   async discover(game) {
     if (!this.state.ludusavi) throw new Error('Pilih ludusavi.exe atau atur lokasi save manual.');
+    this.progress(game.id, 'detecting');
     const detector = new Ludusavi(this.state.ludusavi, path.join(this.stateDirectory, 'ludusavi'));
     try { await fs.access(path.join(this.stateDirectory, 'ludusavi', 'manifest.yaml')); }
     catch (error) {
       if (error.code !== 'ENOENT') throw error;
+      this.progress(game.id, 'manifest');
       await detector.updateManifest();
+      this.progress(game.id, 'detecting');
     }
     const found = await detector.discover(game);
     const fresh = await makeRoots(found.selections);
@@ -118,17 +157,20 @@ export class BackupController {
         await this.save();
         throw error;
       }
-    });
+    }, 'detect', gameId);
   }
   updateManifest() {
     return this.control(async () => {
       if (!this.state.ludusavi) throw new Error('Pilih ludusavi.exe terlebih dahulu.');
+      this.progress(undefined, 'manifest');
       await new Ludusavi(this.state.ludusavi, path.join(this.stateDirectory, 'ludusavi')).updateManifest();
       this.lastDiscovery.clear();
-    });
+    }, 'manifest');
   }
-  async backup(gameId, reason = 'manual') {
-    if (this.controlJob) throw new Error('Pengaturan backup sedang diperbarui.');
+  backup(gameId, reason = 'manual') {
+    return this.control(() => this.backupInternal(gameId, reason), 'backup', gameId);
+  }
+  async backupInternal(gameId, reason) {
     if (!this.engine) throw new Error('Pilih folder backup terlebih dahulu.');
     const config = this.state.games[gameId];
     if (!config?.roots.length) throw new Error('Perlu pengaturan lokasi save.');
@@ -136,21 +178,29 @@ export class BackupController {
     catch (error) { this.setStatus(gameId, 'failed', error.message); throw error; }
     finally { await this.save(); }
   }
-  async restore(gameId, versionId, confirmed) {
-    if (this.controlJob) throw new Error('Pengaturan backup sedang diperbarui.');
+  restore(gameId, versionId, confirmed) {
+    return this.control(() => this.restoreInternal(gameId, versionId, confirmed), 'restore', gameId);
+  }
+  async restoreInternal(gameId, versionId, confirmed) {
     if (!this.engine) throw new Error('Pilih folder backup terlebih dahulu.');
     if (!this.state.games[gameId]) throw new Error('Perlu pengaturan lokasi save.');
     try { return await this.engine.restore(gameId, this.state.games[gameId].roots, versionId, confirmed); }
     catch (error) { this.setStatus(gameId, 'failed', error.message); throw error; }
     finally { await this.save(); }
   }
-  async tick() {
-    if (this.active || this.stopping || !this.state.enabled || !this.engine) return;
+  tick() {
+    if (this.tickJob || this.pendingControls || this.controlJob || this.stopping || !this.state.enabled || !this.engine) return this.tickJob ?? Promise.resolve();
+    this.tickJob = this.runTick().finally(() => { this.tickJob = undefined; });
+    return this.tickJob;
+  }
+  async runTick() {
     this.active = true;
     try {
       for (const game of await this.getGames()) {
-        if (!this.state.enabled || this.stopping) break;
+        if (!this.state.enabled || this.stopping || this.pendingControls) break;
         if (this.engine.busy(game.id)) continue;
+        const operation = this.operation('automatic', game.id, 'preparing');
+        operation.title = game.title;
         try {
           const config = this.state.games[game.id];
           if ((!config || config.mode === 'automatic') && Date.now() - (this.lastDiscovery.get(game.id) ?? 0) > 60000) {
@@ -158,11 +208,11 @@ export class BackupController {
             this.lastDiscovery.set(game.id, Date.now());
             await this.discover(game);
           }
-          if (this.state.enabled && !this.stopping && this.state.games[game.id]?.roots.length) await this.backup(game.id, 'save-change');
+          if (this.state.enabled && !this.stopping && this.state.games[game.id]?.roots.length) await this.backupInternal(game.id, 'save-change');
         } catch (error) {
           if (!this.status.get(game.id) || this.status.get(game.id).status !== 'failed') this.setStatus(game.id, 'setup', error.message);
           this.onError(error);
-        }
+        } finally { this.operations.delete(operation.id); }
       }
     } finally { this.active = false; await this.save(); }
   }
@@ -182,13 +232,13 @@ export class BackupController {
     clearInterval(this.timer);
     this.timer = undefined;
     await this.inFlight;
-    await this.controlJob;
+    await this.controlTail?.catch(() => {});
     await this.engine?.idle();
     await this.saving;
   }
-  async snapshot(gameId) {
+  async snapshot(gameId, lightweight = false) {
     const game = this.state.games[gameId];
-    const versions = this.engine && gameId ? await this.engine.versions(gameId) : [];
-    return { enabled: this.state.enabled, destination: this.state.destination, ludusavi: this.state.ludusavi, retention: this.state.retention, deviceId: this.state.deviceId, status: this.status.get(gameId) ?? { status: game?.roots.length ? 'waiting' : 'setup' }, roots: game?.roots ?? [], versions: versions.map(({ id, createdAt, reason, safety, files }) => ({ id, createdAt, reason, safety, files: files.length })), activity: this.state.activity.filter(item => !gameId || item.gameId === gameId) };
+    const versions = this.engine && gameId && !lightweight ? await this.engine.versions(gameId) : [];
+    return { operations: [...this.operations.values()].map(item => ({ ...item })), lastOperation: this.lastOperation, enabled: this.state.enabled, destination: this.state.destination, ludusavi: this.state.ludusavi, retention: this.state.retention, deviceId: this.state.deviceId, status: this.status.get(gameId) ?? { status: game?.roots.length ? 'waiting' : 'setup' }, roots: game?.roots ?? [], versions: versions.map(({ id, createdAt, reason, safety, files }) => ({ id, createdAt, reason, safety, files: files.length })), activity: this.state.activity.filter(item => !gameId || item.gameId === gameId) };
   }
 }

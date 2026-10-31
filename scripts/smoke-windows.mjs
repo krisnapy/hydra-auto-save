@@ -60,7 +60,7 @@ try {
     }
     await delay(1000);
   }
-  if (!snapshot || typeof snapshot.enabled !== 'boolean' || !snapshot.ludusavi?.endsWith('ludusavi.exe')) throw new Error('IPC atau Ludusavi dalam paket tidak tersedia.');
+  if (!snapshot || !Array.isArray(snapshot.operations) || typeof snapshot.enabled !== 'boolean' || !snapshot.ludusavi?.endsWith('ludusavi.exe')) throw new Error('IPC atau Ludusavi dalam paket tidak tersedia.');
   await evaluate('location.hash = "/settings"');
   let visible = false;
   for (let attempt = 0; attempt < 45; attempt++) {
@@ -68,7 +68,7 @@ try {
       const button = [...document.querySelectorAll('button')].find(item => item.textContent.trim() === 'Personal Cloud Backup');
       button?.click();
       const section = document.querySelector('section.personal-backup');
-      return Boolean(section?.textContent.includes('Folder backup') && section?.textContent.includes('Auto Backup'));
+      return Boolean(section?.textContent.includes('Folder backup') && section?.textContent.includes('Auto Backup') && section?.textContent.includes('Tidak ada operasi yang berjalan.'));
     })()`);
     if (visible) break;
     await delay(1000);
