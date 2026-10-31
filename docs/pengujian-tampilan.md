@@ -1,6 +1,15 @@
 # Pengujian tampilan halaman game
 
-## Terbaru — panel samping 0.2.3
+## Terbaru — OneDrive 0.3.0
+
+Terverifikasi 1 November 2026 WITA. [Build 41247200550](https://github.com/krisnapy/hydra-auto-save/actions/runs/41247200550), [verifikasi 41248027671](https://github.com/krisnapy/hydra-auto-save/actions/runs/41248027671), dan [visual 41248027689](https://github.com/krisnapy/hydra-auto-save/actions/runs/41248027689) lulus. Sumber paket: [9dcc75a](https://github.com/krisnapy/hydra-auto-save/commit/9dcc75a24d4ba376ba3ea1cdc97f22bb2afbef36).
+
+77 tes modul, integrasi/typecheck Hydra, startup unpacked/portable serta tray lulus. 28 tes visual/interaksi lokal dan Windows lulus pada dua ukuran jendela, termasuk kode login/cancel dan unduhan cloud simulasi yang hanya menambah riwayat tanpa restore. Halaman game Windows lengkap memakai aplikasi 0.3.0 dari build yang sama dan profil dummy terisolasi terverifikasi. Ini belum bukti login akun atau upload/download OneDrive nyata maupun save game pengguna.
+
+[Galeri 0.3.0](https://github.com/krisnapy/hydra-auto-save/actions/runs/41248027689/artifacts/13059663777): ekstrak ZIP lalu buka index.html. [Installer](https://github.com/krisnapy/hydra-auto-save/actions/runs/41248027671/artifacts/13060640297) dan [portable](https://github.com/krisnapy/hydra-auto-save/actions/runs/41248027671/artifacts/13059459234) terpisah, sekitar211MB masing-masing. Unduhan privat memerlukan akun dengan akses repo dan berlaku30hari. Publikasi rilis publik dilewati.
+
+
+## Riwayat — panel samping 0.2.3
 
 Terverifikasi 1 November 2026 WITA. [Build 41244821443](https://github.com/krisnapy/hydra-auto-save/actions/runs/41244821443), [verifikasi paket 41245568250](https://github.com/krisnapy/hydra-auto-save/actions/runs/41245568250), dan [visual 41245568264](https://github.com/krisnapy/hydra-auto-save/actions/runs/41245568264) lulus. Sumber paket: [b390111](https://github.com/krisnapy/hydra-auto-save/commit/b3901111fb3eced15306a44ccffac8070e185cdd).
 
