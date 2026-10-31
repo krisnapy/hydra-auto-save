@@ -28,7 +28,8 @@ const phaseLabels: Record<string, string> = {
 const phaseLabel = (phase: string) => phase.startsWith("safety-") ? `Backup pengaman: ${phaseLabels[phase.slice(7)] ?? phase.slice(7)}` : phaseLabels[phase] ?? phase;
 
 
-export function BackupProgressPanel({ gameId, busy, compact = false }: { gameId?: string; busy: boolean; compact?: boolean }) {
+export function BackupProgressPanel({ gameId, busy, compact = false, onCompleted }: { gameId?: string; busy: boolean; compact?: boolean; onCompleted?: () => void }) {
+  const lastCompletion = useRef<string>();
   const [progress, setProgress] = useState<BackupProgress>({ operations: [] });
   useEffect(() => {
     let disposed = false;
@@ -43,6 +44,11 @@ export function BackupProgressPanel({ gameId, busy, compact = false }: { gameId?
       try {
         const result = await window.personalBackup.invoke({ action: "progress", gameId });
         active ||= result.operations.length > 0;
+        const completion = JSON.stringify(result.lastOperation ?? null);
+        if (!disposed) {
+          if (lastCompletion.current !== undefined && completion !== lastCompletion.current && result.lastOperation) onCompleted?.();
+          lastCompletion.current = completion;
+        }
         const serialized = JSON.stringify(result);
         if (!disposed && previous !== serialized) { previous = serialized; setProgress(result); }
       } catch { /* Full snapshots report connection errors. */ }
@@ -55,7 +61,7 @@ export function BackupProgressPanel({ gameId, busy, compact = false }: { gameId?
     void poll();
     document.addEventListener("visibilitychange", onVisible);
     return () => { disposed = true; clearTimeout(timer); document.removeEventListener("visibilitychange", onVisible); };
-  }, [gameId, busy]);
+  }, [gameId, busy, onCompleted]);
   return <>
     {progress.operations.length > 0 ? <div className="personal-backup__progress">
       {progress.operations.map(operation => {
@@ -88,8 +94,8 @@ const backupDate = (value: string) => {
     : date.toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
 };
 
-function GameBackupView({ snapshot, busy, opening, error, message, gameId, action, openLocation }: {
-  snapshot: BackupSnapshot; busy: boolean; opening: boolean; error: string; message: string; gameId: string;
+function GameBackupView({ snapshot, busy, opening, error, message, gameId, action, openLocation, refresh }: {
+  snapshot: BackupSnapshot; busy: boolean; opening: boolean; error: string; message: string; gameId: string; refresh: () => Promise<void>;
   action: (name: string, values?: Record<string, unknown>) => Promise<void>;
   openLocation: (name: "open-save" | "open-backup" | "open-recovery", rootId?: string) => Promise<void>;
 }) {
@@ -137,7 +143,7 @@ function GameBackupView({ snapshot, busy, opening, error, message, gameId, actio
         <p className="personal-backup__latest">{latest ? backupDate(latest.createdAt) : "Lindungi progres Anda"}</p>
         <p className="personal-backup__muted">{snapshot.versions.length ? `${snapshot.versions.length} versi di perangkat ini` : ready ? "Buat salinan save pertama Anda." : "Atur lokasi save dan folder backup untuk mulai."}</p>
       </div>
-      <BackupProgressPanel key={gameId} gameId={gameId} busy={busy} compact />
+      <BackupProgressPanel key={gameId} gameId={gameId} busy={busy} compact onCompleted={refresh} />
       {snapshot.status.status !== "waiting" && !(failed && error) && <p role={failed ? "alert" : "status"} className={failed ? "personal-backup__error" : "personal-backup__muted"}>{labels[snapshot.status.status] ?? snapshot.status.status}{snapshot.status.detail && ` — ${snapshot.status.detail}`}</p>}
       {message && <p role="status" className="personal-backup__feedback">{message}</p>}
       <div className="personal-backup__actions personal-backup__primary-actions">
@@ -229,7 +235,7 @@ export function PersonalCloudBackup({ gameId }: { gameId?: string }) {
     finally { if (mounted.current) setOpening(false); }
   };
   if (gameId) return snapshot
-    ? <GameBackupView key={gameId} {...{ snapshot, busy, opening, error, message, gameId, action, openLocation }} />
+    ? <GameBackupView key={gameId} {...{ snapshot, busy, opening, error, message, gameId, action, openLocation, refresh }} />
     : <section className="personal-backup" aria-label="Personal Cloud Backup"><h3>Personal Cloud</h3><p role={error ? "alert" : "status"}>{error || "Memuat status backup…"}</p></section>;
   const guideGame = snapshot?.setup.games.find(game => game.id === selectedGame) ?? snapshot?.setup.games[0];
   const showGuide = guideOpen || (!snapshot?.setup.completed && !guideDismissed);

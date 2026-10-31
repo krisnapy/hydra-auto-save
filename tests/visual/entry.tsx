@@ -52,7 +52,7 @@ const invoke = async (request: Record<string, unknown>) => {
   throw new Error(`Aksi fixture tidak didukung: ${request.action}`);
 };
 window.personalBackup = { invoke: invoke as typeof window.personalBackup.invoke };
-Object.assign(window, { visualFixture: { calls, setProgress: (completed: number) => { current.operations[0].completed = completed; } } });
+Object.assign(window, { visualFixture: { calls, completeAutomatic: () => { current.operations = []; current.status = { status: "complete" }; current.versions = [version("automatic")]; current.lastOperation = { kind: "automatic", gameId, status: "complete", at }; }, setProgress: (completed: number) => { current.operations[0].completed = completed; } } });
 createRoot(document.getElementById("root")!).render(<main className="visual-harness">
   <p className="visual-harness__notice">UJI TAMPILAN · DATA CONTOH · {scenario}</p>
   <h1>Game Contoh</h1>

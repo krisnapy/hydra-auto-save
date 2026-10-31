@@ -94,3 +94,12 @@ test('kegagalan permintaan ditampilkan sebagai alert', async ({ page }) => {
   await section.getByRole('button', { name: 'Tutup riwayat' }).click();
   await expect(section.getByRole('button', { name: /^Pulihkan versi/ })).toHaveCount(0);
 });
+
+test('hasil backup otomatis langsung menyegarkan jumlah versi', async ({ page }) => {
+  await visit(page, 'backing-up');
+  await expect(panel(page).getByRole('progressbar')).toBeVisible();
+  await page.evaluate(() => window.visualFixture.completeAutomatic());
+  await expect(panel(page).getByText('1 versi di perangkat ini', { exact: true })).toBeVisible();
+  await expect(panel(page).getByRole('progressbar')).toHaveCount(0);
+  await expect(panel(page).getByRole('button', { name: 'Pulihkan', exact: true })).toBeEnabled();
+});
