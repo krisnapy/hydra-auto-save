@@ -1,4 +1,4 @@
-# Hydra Personal Cloud Backup — 0.2.0
+# Hydra Personal Cloud Backup — 0.2.1
 
 Implementasi awal modul backup untuk salinan kode **Hydra Launcher 4.3.0 di Windows**. Tersedia installer dan aplikasi portable Windows x64 dengan runtime serta Ludusavi bawaan. Build, pemeriksaan tipe seluruh Hydra, dan uji membuka aplikasi/pengaturan backup di Windows telah berhasil. Pengujian game nyata dan penyedia cloud masih diperlukan.
 
@@ -8,12 +8,12 @@ Draft awal tetap tersedia di [docs/rancangan-auto-backup.md](docs/rancangan-auto
 
 Pilih salah satu unduhan langsung dari Releases, **tanpa login GitHub**:
 
-- [Installer Windows x64](https://github.com/krisnapy/hydra-auto-save/releases/download/v0.2.0/Hydra-Personal-Backup-0.2.0-hydra-4.3.0-windows-x64-setup.exe): jalankan untuk memasang aplikasi.
-- [Portable Windows x64](https://github.com/krisnapy/hydra-auto-save/releases/download/v0.2.0/Hydra-Personal-Backup-0.2.0-hydra-4.3.0-windows-x64-portable.exe): jalankan untuk langsung mencoba.
+- [Installer Windows x64](https://github.com/krisnapy/hydra-auto-save/releases/download/v0.2.1/Hydra-Personal-Backup-0.2.1-hydra-4.3.0-windows-x64-setup.exe): jalankan untuk memasang aplikasi.
+- [Portable Windows x64](https://github.com/krisnapy/hydra-auto-save/releases/download/v0.2.1/Hydra-Personal-Backup-0.2.1-hydra-4.3.0-windows-x64-portable.exe): jalankan untuk langsung mencoba.
 
-Tidak perlu mengekstrak ZIP atau memasang Node.js dan Ludusavi. [Halaman rilis 0.2.0](https://github.com/krisnapy/hydra-auto-save/releases/tag/v0.2.0) menyediakan panduan dan checksum SHA-256. Ini versi uji awal berbasis Hydra 4.3.0; aplikasi belum ditandatangani secara digital. Versi 0.2.0 menambahkan pemantauan perubahan save dengan penggabungan perubahan berdekatan dan pemeriksaan cadangan, penanganan save yang masih ditulis, peringatan ruang penyimpanan, panduan pengaturan awal, serta penanganan pemulihan terputus. Cache riwayat, akses lokasi melalui Explorer, dan perbaikan antrean/tray dari versi sebelumnya tetap disertakan. Checksum diperiksa sebelum publikasi.
+Tidak perlu mengekstrak ZIP atau memasang Node.js dan Ludusavi. [Halaman rilis 0.2.1](https://github.com/krisnapy/hydra-auto-save/releases/tag/v0.2.1) menyediakan panduan dan checksum SHA-256. Ini versi uji awal berbasis Hydra 4.3.0; aplikasi belum ditandatangani secara digital. Fondasi 0.2.0 menambahkan pemantauan perubahan save dengan penggabungan perubahan berdekatan dan pemeriksaan cadangan, penanganan save yang masih ditulis, peringatan ruang penyimpanan, panduan pengaturan awal, serta penanganan pemulihan terputus. Cache riwayat, akses lokasi melalui Explorer, dan perbaikan antrean/tray dari versi sebelumnya tetap disertakan. Pada 0.2.1, progres diperbarui lebih halus melalui status di memori dan lokasi save ditampilkan per folder. Checksum diperiksa sebelum publikasi.
 
-Build perbaikan: [41232551624](https://github.com/krisnapy/hydra-auto-save/actions/runs/41232551624). Uji aplikasi dan publikasi: [41232966750](https://github.com/krisnapy/hydra-auto-save/actions/runs/41232966750). Uji Ludusavi asli dan Steam ID: [41218017829](https://github.com/krisnapy/hydra-auto-save/actions/runs/41218017829). Berkas Releases tidak mengikuti kedaluwarsa 30 hari artifact Actions.
+Build perbaikan: [41233591174](https://github.com/krisnapy/hydra-auto-save/actions/runs/41233591174). Uji aplikasi dan publikasi: [41234172863](https://github.com/krisnapy/hydra-auto-save/actions/runs/41234172863). Uji Ludusavi asli dan Steam ID: [41218017829](https://github.com/krisnapy/hydra-auto-save/actions/runs/41218017829). Berkas Releases tidak mengikuti kedaluwarsa 30 hari artifact Actions.
 
 Workflow **Windows installer** memakai cache dependensi dan komponen native dengan kunci sumber Hydra, platform, runtime, dan lockfile; cache diperiksa dengan Electron sebelum dipakai. Cache baru perlu diisi pada build pertama. Workflow ini membangun paket dari sumber Hydra 4.3.0 yang dipatok. Workflow **Verify Windows package** memeriksa checksum, membuka aplikasi, dan mengunggah installer serta portable sebagai unduhan terpisah, lalu menerbitkan rilis publik setelah pemeriksaan berhasil. Lihat [hasil build](https://github.com/krisnapy/hydra-auto-save/actions/workflows/windows.yml) dan [hasil verifikasi](https://github.com/krisnapy/hydra-auto-save/actions/workflows/verify-windows.yml) untuk paket berikutnya.
 
@@ -25,13 +25,14 @@ Panduan pengguna: [panduan Windows](docs/panduan-windows.md). Tutup Hydra resmi 
 - Jendela utama dilepaskan saat ditutup; menu tray dibuka langsung dari cache, dengan akses pengaturan dan status saat diperbarui. Polling antarmuka berhenti ketika tersembunyi; pengaturan identik tidak ditulis ulang. Layanan Hydra/backup tetap berjalan di tray, jadi CPU/RAM tidak menjadi nol.
 - Deteksi file save melalui perintah preview Ludusavi. Game Steam dicocokkan dengan Steam ID; game kustom memakai judul persis. Kecocokan tidak pasti memerlukan pengaturan manual.
 - Pemilihan file atau folder save manual melalui dialog Windows.
+- Buka folder save membuka folder penyimpanan. Beberapa file dalam folder yang sama dikelompokkan menjadi satu lokasi; folder terpisah tetap tersedia masing-masing.
 - Backup ke folder sinkronisasi lokal, dengan identitas perangkat tersendiri.
 - SHA-256 untuk membandingkan isi dan memeriksa integritas. Isi yang sama tidak membuat versi normal baru.
 - Riwayat awal 10 versi normal per game **per perangkat**. Backup pengaman sebelum pemulihan tidak dihapus otomatis.
 - Penanda selesai dan pemeriksaan kelengkapan sebelum versi ditampilkan untuk pemulihan.
 - Backup manual, pemicu setelah game ditutup, pemulihan dengan konfirmasi, dan catatan aktivitas lokal.
 - Antrean operasi yang memberi giliran pada permintaan pengguna setelah game aktif selesai diproses.
-- Indikator proses diperbarui setiap detik: tahap operasi, jumlah file/lokasi pada tahap yang diketahui, serta hasil selesai/gagal terakhir per game. Riwayat tetap diperbarui terpisah setiap 10 detik agar pemantauan progres tidak berulang kali membaca semua isi backup.
+- Indikator proses diperbarui setiap 250 ms selama operasi berjalan melalui jalur khusus di memori, atau tiap detik saat idle: tahap operasi, jumlah file/lokasi pada tahap yang diketahui, serta hasil selesai/gagal terakhir per game. Bar memakai animasi transisi, tahap tanpa jumlah menampilkan aktivitas tanpa persentase perkiraan, dan status identik tidak menggambar ulang panel. Riwayat tetap diperbarui terpisah setiap 10 detik agar pemantauan progres tidak berulang kali membaca semua isi backup.
 - Backup pengaman sebelum mengganti save, persiapan file sebelum pemulihan, serta rollback apabila penggantian lintas lokasi gagal.
 - Penguncian peluncuran melalui Hydra selama pemulihan serta pemeriksaan proses sebelum mengganti save.
 
@@ -77,7 +78,7 @@ Mematikan Auto Backup menghentikan penjadwalan berikutnya. Operasi yang sudah be
 ## Batas versi ini
 
 - Installer dan portable `.exe` berhasil dibuat. Aplikasi portable berhasil dibuka di Windows CI; layanan backup, renderer lokal, pengaturan backup, dan Ludusavi bawaan terverifikasi. Instalasi interaktif di PC pengguna, game nyata, dan sinkronisasi OneDrive/Google Drive/Dropbox/pCloud belum diuji.
-- Sebanyak 64 pengujian lulus di Windows dan lokal. Pemeriksaan tipe seluruh Hydra terintegrasi serta build Windows lulus. Ini belum membuktikan konsistensi save semua game.
+- Sebanyak 67 pengujian lulus di Windows dan lokal. Pemeriksaan tipe seluruh Hydra terintegrasi serta build Windows lulus. Ini belum membuktikan konsistensi save semua game.
 - Ludusavi 0.29.0 asli telah diuji untuk pencarian Steam ID, judul persis, preview file save contoh, penanganan ID tidak dikenal, dan unduhan database. ID `1245620`, `292030`, dan `3751260` dikenali database; lokasi save nyata pada PC pengguna tetap perlu diuji. Database diunduh pada penggunaan pertama.
 - Lokasi save relatif terhadap folder instalasi bergantung pada root instalasi yang dapat dikenali Ludusavi; lokasi instalasi Hydra belum diteruskan sebagai root pemindaian. Gunakan lokasi manual jika file tersebut belum ditemukan.
 - Backup/riwayat yang ditawarkan untuk pemulihan hanya milik perangkat saat ini. Backup perangkat lain tetap terpisah; pemindahan/pemulihan lintas perangkat belum tersedia.

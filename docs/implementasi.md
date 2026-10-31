@@ -2,6 +2,14 @@
 
 Tanggal: 31 Oktober 2026 WITA. Status: paket Windows awal tersedia; uji game nyata belum dilakukan.
 
+## Progres halus dan folder save — 0.2.1
+
+Panel progres terpisah dari state/pembaruan halaman utama. Endpoint `progress` membaca salinan operasi dan hasil terakhir dari memori secara sinkron; tidak membaca riwayat, ruang disk, journal, atau pustaka game. Polling serial dilakukan tiap 250 ms selama operasi/permintaan aktif, satu detik saat idle, berhenti saat halaman tersembunyi/unmount, dan mengabaikan respons terlambat. Hasil identik tidak menggambar ulang panel. Bar memakai transform dengan transisi 220 ms; tahap tanpa jumlah memakai animasi aktivitas tanpa persentase perkiraan. Preferensi reduced motion dihormati. Riwayat tetap diperbarui terpisah setiap 10 detik.
+
+Lokasi save ditampilkan sebagai folder unik: file memakai folder induknya, folder memakai lokasinya sendiri, dan beberapa file dalam folder sama dikelompokkan. Ini tidak memperluas cakupan backup. Proses utama tetap mengambil lokasi dari konfigurasi tersimpan dan membuka folder melalui `shell.openPath`, termasuk ketika file save belum ada tetapi foldernya masih ada. Folder berbeda tidak digabung menjadi induk umum yang terlalu luas.
+
+67 tes lokal dan pemeriksaan integrasi lulus. Pengujian baru memeriksa status murni memori/salinan terpisah, deduplikasi lokasi folder, serta polling serial, hasil identik, visibility, dan unmount. Windows: seluruh 67 tes, pemeriksaan integrasi dan typecheck Hydra lulus; startup unpacked/portable, endpoint progres, panduan awal dan tutup/buka ulang tray lulus. [Build 41233591174](https://github.com/krisnapy/hydra-auto-save/actions/runs/41233591174), [verifikasi/publikasi 41234172863](https://github.com/krisnapy/hydra-auto-save/actions/runs/41234172863), sumber [67366fc](https://github.com/krisnapy/hydra-auto-save/commit/67366fcdd3315bdd29fb30e6a14775bacc4d5090). [Rilis v0.2.1](https://github.com/krisnapy/hydra-auto-save/releases/tag/v0.2.1) publik dengan checksum/digest dan 4 tautan anonim lulus. Tes Windows pertama menemukan urutan cleanup fixture yang menghapus folder sebelum controller berhenti; helper tes diperbaiki untuk menghentikan pemantau dan menyelesaikan operasi dahulu. Kehalusan visual pada PC pengguna, Explorer nyata, game dan cloud nyata belum diverifikasi.
+
 ## Fondasi backup andal — 0.2.0
 
 Versi ini mengimplementasikan tahap 0.2 roadmap Personal Cloud. `SaveMonitor` memantau folder save secara rekursif dan folder induk untuk penggantian file/folder. Event terkait save digabung selama 1,5 detik; penggantian/galat pemantau memicu pemasangan ulang. Folder yang belum ada dipantau dari induk terdekat sambil mempertahankan fallback. Watcher tidak dipasang untuk pemanggilan tick satu kali; ia aktif bersama lifecycle controller dan dilepas saat dinonaktifkan atau dihentikan.
