@@ -9,10 +9,14 @@ import { BackupController } from '../module/controller.mjs';
 
 async function files(t) {
   const directory = await fs.mkdtemp(path.join(await fs.realpath(os.tmpdir()), 'hydra-monitor-'));
-  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  const cleanups = [];
+  t.after(async () => {
+    for (const cleanup of cleanups) await cleanup();
+    await fs.rm(directory, { recursive: true, force: true, maxRetries: 3 });
+  });
   const save = path.join(directory, 'save.sav');
   await fs.writeFile(save, 'first');
-  return { directory, save };
+  return { directory, save, cleanup: callback => cleanups.push(callback) };
 }
 async function waitFor(check, timeout = 6000) {
   const until = Date.now() + timeout;
@@ -21,10 +25,10 @@ async function waitFor(check, timeout = 6000) {
 }
 
 test('native save monitor observes atomic file replacement and closes its watchers', async t => {
-  const { directory, save } = await files(t);
+  const { directory, save, cleanup } = await files(t);
   const events = [];
   const monitor = new SaveMonitor(id => events.push(id));
-  t.after(() => monitor.close());
+  cleanup(() => monitor.close());
   await monitor.sync({ game: [{ id: 'root', path: save, kind: 'file' }] });
   assert.equal(monitor.healthy('game'), true);
   const replacement = path.join(directory, 'temp.sav');
@@ -36,11 +40,11 @@ test('native save monitor observes atomic file replacement and closes its watche
 });
 
 test('event bursts coalesce into one version, unchanged heartbeats skip hashing, periodic fallback catches lost events', async t => {
-  const { directory, save } = await files(t);
+  const { directory, save, cleanup } = await files(t);
   let notify;
   const monitor = { sync: async () => {}, healthy: () => true, close: () => {} };
   const controller = await new BackupController({ stateDirectory: path.join(directory, 'state'), stableMs: 5, debounceMs: 80, pollMs: 20, fallbackMs: 100000, getGames: async () => [{ id: 'game', title: 'Game' }], monitorFactory: callback => { notify = callback; return monitor; } }).init();
-  t.after(() => controller.stop());
+  cleanup(() => controller.stop());
   await controller.configure({ enabled: true, destination: path.join(directory, 'cloud') });
   await controller.manual('game', [{ path: save }]);
   controller.start();
@@ -60,10 +64,10 @@ test('event bursts coalesce into one version, unchanged heartbeats skip hashing,
 });
 
 test('unsupported watcher falls back to periodic scans and stop releases monitor resources', async t => {
-  const { directory, save } = await files(t);
+  const { directory, save, cleanup } = await files(t);
   let closed = 0;
   const controller = await new BackupController({ stateDirectory: path.join(directory, 'state'), stableMs: 1, debounceMs: 5, pollMs: 20, monitorFactory: () => ({ sync: async () => {}, healthy: () => false, close: () => { closed++; } }), getGames: async () => [{ id: 'game' }] }).init();
-  t.after(() => controller.stop());
+  cleanup(() => controller.stop());
   await controller.configure({ enabled: true, destination: path.join(directory, 'cloud') });
   await controller.manual('game', [{ path: save }]);
   controller.start();
@@ -75,7 +79,7 @@ test('unsupported watcher falls back to periodic scans and stop releases monitor
 });
 
 test('guided setup cannot complete before a successful backup and resets when destination changes', async t => {
-  const { directory, save } = await files(t);
+  const { directory, save, cleanup } = await files(t);
   const controller = await new BackupController({ stateDirectory: path.join(directory, 'state'), stableMs: 1, getGames: async () => [{ id: 'game', title: 'Game' }] }).init();
   await controller.configure({ destination: path.join(directory, 'cloud') });
   await assert.rejects(controller.configure({ enabled: true, setupCompleted: true }), /backup percobaan/);
@@ -90,12 +94,12 @@ test('guided setup cannot complete before a successful backup and resets when de
 });
 
 test('directory replacement rebuilds recursive monitoring for new nested save files', async t => {
-  const { directory } = await files(t);
+  const { directory, cleanup } = await files(t);
   const root = path.join(directory, 'folder');
   await fs.mkdir(root);
   const events = [];
   const monitor = new SaveMonitor(id => events.push(id));
-  t.after(() => monitor.close());
+  cleanup(() => monitor.close());
   const configurations = { game: [{ path: root, kind: 'directory', id: 'root' }] };
   await monitor.sync(configurations);
   await fs.rename(root, `${root}-old`);
@@ -111,7 +115,7 @@ test('directory replacement rebuilds recursive monitoring for new nested save fi
 });
 
 test('unstable save is retried without marking automatic backup as failed', async t => {
-  const { directory, save } = await files(t);
+  const { directory, save, cleanup } = await files(t);
   const errors = [];
   const controller = await new BackupController({ stateDirectory: path.join(directory, 'state'), stableMs: 1, getGames: async () => [{ id: 'game' }], onError: error => errors.push(error) }).init();
   await controller.configure({ enabled: true, destination: path.join(directory, 'cloud') });
