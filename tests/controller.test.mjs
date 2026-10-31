@@ -83,7 +83,8 @@ test('pengaturan menunggu satu operasi aktif lalu mendapat giliran sebelum game 
   const view = await controller.snapshot('steam:1');
   assert.equal(view.retention, 20);
   assert.equal(view.operations.length, 0);
-  assert.equal(view.lastOperation.kind, 'settings');
+  assert.equal((await controller.snapshot()).lastOperation.kind, 'settings');
+  assert.equal(view.lastOperation.kind, 'automatic');
   assert.equal(view.lastOperation.status, 'complete');
   assert.equal(view.versions.length, 1);
   assert.equal((await controller.snapshot('steam:2')).versions.length, 0);

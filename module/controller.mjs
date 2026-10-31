@@ -13,6 +13,7 @@ export class BackupController {
     this.lastDiscovery = new Map();
     this.status = new Map();
     this.operations = new Map();
+    this.gameResults = new Map();
     this.pendingControls = 0;
   }
   async init() {
@@ -33,7 +34,7 @@ export class BackupController {
   setStatus(id, status, detail) {
     this.status.set(id, { status, detail });
     if (['complete', 'failed'].includes(status) && [...this.operations.values()].some(item => item.gameId === id && item.kind === 'automatic')) {
-      this.lastOperation = { kind: 'automatic', gameId: id, status, detail, at: new Date().toISOString() };
+      this.rememberOperation({ kind: 'automatic', gameId: id, status, detail, at: new Date().toISOString() });
     }
     const last = this.state.activity.find(item => item.gameId === id);
     if (status !== 'preparing' && status !== 'waiting' && (status === 'complete' || status === 'restored' || !last || last.status !== status || last.detail !== (detail ?? ''))) {
@@ -45,6 +46,10 @@ export class BackupController {
     // Serialize persistence so concurrent game jobs cannot publish older settings.
     this.saving = (this.saving ?? Promise.resolve()).catch(() => {}).then(() => atomicJson(this.file, this.state));
     return this.saving;
+  }
+  rememberOperation(result) {
+    this.lastOperation = result;
+    if (result.gameId) this.gameResults.set(result.gameId, result);
   }
   operation(kind, gameId, phase = 'queued') {
     const id = randomUUID();
@@ -72,10 +77,10 @@ export class BackupController {
       operation.updatedAt = new Date().toISOString();
       try {
         const result = await action();
-        this.lastOperation = { kind, gameId, status: 'complete', at: new Date().toISOString(), detail: kind === 'backup' && !result ? 'Isi save tidak berubah; tidak membuat versi baru.' : undefined };
+        this.rememberOperation({ kind, gameId, status: 'complete', at: new Date().toISOString(), detail: kind === 'backup' && !result ? 'Isi save tidak berubah; tidak membuat versi baru.' : undefined });
         return result;
       } catch (error) {
-        this.lastOperation = { kind, gameId, status: 'failed', at: new Date().toISOString(), detail: error.message };
+        this.rememberOperation({ kind, gameId, status: 'failed', at: new Date().toISOString(), detail: error.message });
         throw error;
       } finally {
         this.operations.delete(operation.id);
@@ -211,6 +216,7 @@ export class BackupController {
           if (this.state.enabled && !this.stopping && this.state.games[game.id]?.roots.length) await this.backupInternal(game.id, 'save-change');
         } catch (error) {
           if (!this.status.get(game.id) || this.status.get(game.id).status !== 'failed') this.setStatus(game.id, 'setup', error.message);
+          this.rememberOperation({ kind: 'automatic', gameId: game.id, status: 'failed', at: new Date().toISOString(), detail: error.message });
           this.onError(error);
         } finally { this.operations.delete(operation.id); }
       }
@@ -239,6 +245,6 @@ export class BackupController {
   async snapshot(gameId, lightweight = false) {
     const game = this.state.games[gameId];
     const versions = this.engine && gameId && !lightweight ? await this.engine.versions(gameId) : [];
-    return { operations: [...this.operations.values()].map(item => ({ ...item })), lastOperation: this.lastOperation, enabled: this.state.enabled, destination: this.state.destination, ludusavi: this.state.ludusavi, retention: this.state.retention, deviceId: this.state.deviceId, status: this.status.get(gameId) ?? { status: game?.roots.length ? 'waiting' : 'setup' }, roots: game?.roots ?? [], versions: versions.map(({ id, createdAt, reason, safety, files }) => ({ id, createdAt, reason, safety, files: files.length })), activity: this.state.activity.filter(item => !gameId || item.gameId === gameId) };
+    return { operations: [...this.operations.values()].map(item => ({ ...item })), lastOperation: gameId ? this.gameResults.get(gameId) : this.lastOperation, enabled: this.state.enabled, destination: this.state.destination, ludusavi: this.state.ludusavi, retention: this.state.retention, deviceId: this.state.deviceId, status: this.status.get(gameId) ?? { status: game?.roots.length ? 'waiting' : 'setup' }, roots: game?.roots ?? [], versions: versions.map(({ id, createdAt, reason, safety, files }) => ({ id, createdAt, reason, safety, files: files.length })), activity: this.state.activity.filter(item => !gameId || item.gameId === gameId) };
   }
 }
