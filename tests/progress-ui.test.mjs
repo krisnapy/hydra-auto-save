@@ -9,7 +9,7 @@ const require = createRequire(import.meta.url);
 test('progress panel polls serially, skips unchanged renders and sleeps while hidden or unmounted', async () => {
   const source = await readFile(new URL('../integration/overlay/src/renderer/src/components/personal-cloud-backup.tsx', import.meta.url), 'utf8');
   const effects = [], updates = [], timers = new Map(), listeners = new Map();
-  let timerId = 0, calls = 0, resolve;
+  let timerId = 0, calls = 0, completions = 0, resolve;
   const document = { hidden: false, addEventListener: (name, fn) => listeners.set(name, fn), removeEventListener: name => listeners.delete(name) };
   const exports = {};
   const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX } }).outputText;
@@ -18,9 +18,9 @@ test('progress panel polls serially, skips unchanged renders and sleeps while hi
     window: { personalBackup: { invoke: request => { assert.equal(request.action, 'progress'); calls++; return new Promise(done => { resolve = done; }); } } },
     setTimeout: (fn, delay) => { const id = ++timerId; timers.set(id, { fn, delay }); return id; },
     clearTimeout: id => timers.delete(id),
-    require: name => name === 'react' ? { useState: value => [value, update => updates.push(update)], useEffect: fn => effects.push(fn) } : name.endsWith('.scss') ? {} : require(name),
+    require: name => name === 'react' ? { useRef: value => ({ current: value }), useState: value => [value, update => updates.push(update)], useEffect: fn => effects.push(fn) } : name.endsWith('.scss') ? {} : require(name),
   });
-  exports.BackupProgressPanel({ gameId: 'game', busy: false });
+  exports.BackupProgressPanel({ gameId: 'game', busy: false, onCompleted: () => completions++ });
   const cleanup = effects[0]();
   const flush = () => new Promise(done => setImmediate(done));
   assert.equal(calls, 1);
@@ -37,11 +37,17 @@ test('progress panel polls serially, skips unchanged renders and sleeps while hi
   document.hidden = true; listeners.get('visibilitychange')();
   assert.equal(timers.size, 0);
   document.hidden = false; listeners.get('visibilitychange')();
-  resolve({ operations: [] }); await flush();
+  const completed = { operations: [], lastOperation: { kind: 'automatic', status: 'complete', at: '2026-11-01T00:00:00Z' } };
+  resolve(completed); await flush();
+  assert.equal(completions, 1, 'a finished operation refreshes the summary once');
   assert.equal([...timers.values()][0].delay, 1000);
+  listeners.get('visibilitychange')();
+  resolve(completed); await flush();
+  assert.equal(completions, 1, 'unchanged completion must not repeat a full history refresh');
   listeners.get('visibilitychange')();
   const before = updates.length;
   cleanup(); resolve(active); await flush();
+  assert.equal(completions, 1, 'late response cannot refresh an unmounted summary');
   assert.equal(updates.length, before, 'late response cannot update an unmounted panel');
   assert.equal(timers.size, 0);
   assert.equal(listeners.size, 0);
