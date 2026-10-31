@@ -2,6 +2,14 @@
 
 Tanggal: 31 Oktober 2026 WITA. Status: paket Windows awal tersedia; uji game nyata belum dilakukan.
 
+## Buka lokasi save dan backup — 0.1.4
+
+Halaman game menampilkan tombol **Buka lokasi save** di setiap lokasi yang terdaftar, serta **Buka lokasi backup** untuk folder game/perangkat tersebut. Settings membuka folder tujuan backup utama. Lokasi backup berasal dari `BackupEngine.directory`, sehingga memakai struktur yang sama dengan penyimpanan riwayat.
+
+Permintaan dari renderer hanya membawa ID lokasi; proses utama mencari path dari konfigurasi tersimpan dan memeriksa pengirim tepercaya. Folder dibuka dengan `shell.openPath`; file save disorot melalui `shell.showItemInFolder` dan tidak dieksekusi. Lokasi yang hilang, ID tidak dikenal, dan kegagalan Explorer menghasilkan pesan. Membuka lokasi memakai snapshot ringan dan tidak masuk antrean penyalinan/pemulihan. Tidak membuat folder atau memulihkan save yang hilang.
+
+47 tes lokal lulus, termasuk pemilihan lokasi tersimpan, penolakan ID/pengirim tidak tepercaya, penyorotan file, serta kegagalan membuka folder. Pemeriksaan integrasi lokal lulus. Pemeriksaan tipe seluruh Hydra dan [build Windows 41228565492](https://github.com/krisnapy/hydra-auto-save/actions/runs/41228565492) lulus dari commit `057c047c4a5bc300d82d3750d6982aaf492d2233`. Uji startup executable unpacked serta tutup/buka ulang tray lulus. [Verifikasi 41229156190](https://github.com/krisnapy/hydra-auto-save/actions/runs/41229156190) membuka portable, memeriksa checksum dan layanan backup, lalu menerbitkan [rilis 0.1.4](https://github.com/krisnapy/hydra-auto-save/releases/tag/v0.1.4). Keempat aset lolos pemeriksaan unduh anonim. Pemanggilan Explorer diuji memakai stub shell; interaksi Explorer pada desktop pengguna dan save game nyata belum diuji.
+
 ## Build, startup, dan tray — 0.1.3
 
 Permintaan pengguna: percepat build dan pembukaan aplikasi serta kurangi pekerjaan tray yang tidak diperlukan. Tidak ada klaim bahwa tray menggunakan CPU/RAM nol. Layanan pemantauan game, unduhan aktif, dan backup tetap memerlukan proses utama serta layanan Hydra terkait.
