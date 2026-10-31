@@ -169,3 +169,37 @@ test('unchanged settings do not replace the settings file on idle polls', async 
   await controller.configure({ retention: 20 });
   assert.equal(JSON.parse(await fs.readFile(controller.file, 'utf8')).retention, 20);
 });
+
+test('progress polling reads only memory and returns detached operation data', async () => {
+  const controller = new BackupController({ stateDirectory: '/unused', getGames: async () => { throw new Error('must not query library'); } });
+  controller.state = { games: {} };
+  controller.engine = { storage: () => { throw new Error('must not query storage'); }, recovery: () => { throw new Error('must not read journals'); } };
+  const operation = controller.operation('backup', 'game', 'copying');
+  controller.progress('game', 'copying', 3, 10);
+  const first = controller.progressSnapshot('game');
+  assert.equal(first.operations[0].completed, 3);
+  controller.progress('game', 'copying', 4, 10);
+  assert.equal(first.operations[0].completed, 3);
+  assert.equal(controller.progressSnapshot('game').operations[0].completed, 4);
+  controller.operations.delete(operation.id);
+  controller.rememberOperation({ kind: 'backup', gameId: 'game', status: 'complete', at: 'now' });
+  const done = controller.progressSnapshot('game');
+  assert.equal(done.operations.length, 0);
+  done.lastOperation.status = 'failed';
+  assert.equal(controller.progressSnapshot('game').lastOperation.status, 'complete');
+});
+
+test('save locations group files in one folder and retain separate configured directories', async t => {
+  const root = await fs.mkdtemp(path.join(await fs.realpath(os.tmpdir()), 'hydra-folders-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const controller = await new BackupController({ stateDirectory: path.join(root, 'state'), getGames: async () => [] }).init();
+  controller.state.games.game = { roots: [
+    { id: 'one', kind: 'file', path: path.join(root, 'save', 'one.sav') },
+    { id: 'two', kind: 'file', path: path.join(root, 'save', 'two.sav') },
+    { id: 'folder', kind: 'directory', path: path.join(root, 'save') },
+    { id: 'other', kind: 'directory', path: path.join(root, 'other') },
+  ] };
+  const snapshot = await controller.snapshot('game', true);
+  assert.deepEqual(snapshot.saveFolders, [{ rootId: 'one', path: path.join(root, 'save') }, { rootId: 'other', path: path.join(root, 'other') }]);
+  assert.equal(snapshot.roots.length, 4);
+});

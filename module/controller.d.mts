@@ -4,6 +4,10 @@ export interface BackupOperation {
   id: string; kind: string; gameId?: string; title?: string; phase: string;
   startedAt: string; updatedAt: string; completed?: number; total?: number;
 }
+export interface BackupProgress {
+  operations: BackupOperation[];
+  lastOperation?: { kind: string; gameId?: string; status: string; at: string; detail?: string };
+}
 export interface RecoveryInfo { journal: string; automatic: boolean; committed: boolean; }
 export interface BackupSnapshot {
   setup: { completed: boolean; firstBackupAt?: string; games: Array<{ id: string; title: string; configured: boolean }> };
@@ -16,6 +20,7 @@ export interface BackupSnapshot {
   enabled: boolean; destination: string; backupDirectory: string; ludusavi: string; retention: number; deviceId: string;
   status: { status: string; detail?: string };
   roots: SaveRoot[];
+  saveFolders: Array<{ rootId: string; path: string }>;
   versions: Array<{ id: string; createdAt: string; reason: string; safety: boolean; files: number }>;
   activity: Array<{ at: string; gameId: string; status: string; detail: string }>;
 }
@@ -29,6 +34,7 @@ export class BackupController {
   backup(gameId: string, reason?: string): Promise<unknown>;
   restore(gameId: string, versionId: string, confirmed: boolean): Promise<unknown>;
   recover(gameId: string): Promise<void>;
+  progressSnapshot(gameId?: string): BackupProgress;
   snapshot(gameId?: string, lightweight?: boolean): Promise<BackupSnapshot>;
   start(): void;
   stop(): Promise<void>;

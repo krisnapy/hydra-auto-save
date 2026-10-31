@@ -304,6 +304,9 @@ export class BackupController {
     this.monitor.close();
     await this.saving;
   }
+  progressSnapshot(gameId) {
+    return { operations: [...this.operations.values()].map(item => ({ ...item })), lastOperation: (gameId ? this.gameResults.get(gameId) : this.lastOperation) ? { ...(gameId ? this.gameResults.get(gameId) : this.lastOperation) } : undefined };
+  }
   async snapshot(gameId, lightweight = false) {
     const game = this.state.games[gameId];
     if (!lightweight || !this.snapshotGames) this.snapshotGames = await this.getGames();
@@ -314,6 +317,12 @@ export class BackupController {
     if (!lightweight && this.engine) this.interrupted = (await Promise.all(games.map(async game => ({ id: game.id, title: game.title ?? game.id, recovery: await this.engine.recovery(game.id) })))).filter(item => item.recovery);
     const interrupted = this.interrupted ?? [];
     const versions = this.engine && gameId && !lightweight ? await this.engine.versions(gameId) : [];
-    return { setup, storage, recovery, interrupted, operations: [...this.operations.values()].map(item => ({ ...item })), lastOperation: gameId ? this.gameResults.get(gameId) : this.lastOperation, enabled: this.state.enabled, destination: this.state.destination, backupDirectory: this.engine && gameId ? this.engine.directory(gameId) : this.state.destination, ludusavi: this.state.ludusavi, retention: this.state.retention, deviceId: this.state.deviceId, status: this.status.get(gameId) ?? { status: game?.roots.length ? 'waiting' : 'setup' }, roots: game?.roots ?? [], versions: versions.map(({ id, createdAt, reason, safety, files }) => ({ id, createdAt, reason, safety, files: files.length })), activity: this.state.activity.filter(item => !gameId || item.gameId === gameId) };
+    const folders = new Map();
+    for (const root of game?.roots ?? []) {
+      const folder = root.kind === 'file' ? path.dirname(root.path) : root.path;
+      const key = process.platform === 'win32' ? path.normalize(folder).toLowerCase() : path.normalize(folder);
+      if (!folders.has(key)) folders.set(key, { rootId: root.id, path: folder });
+    }
+    return { setup, storage, recovery, interrupted, ...this.progressSnapshot(gameId), saveFolders: [...folders.values()], enabled: this.state.enabled, destination: this.state.destination, backupDirectory: this.engine && gameId ? this.engine.directory(gameId) : this.state.destination, ludusavi: this.state.ludusavi, retention: this.state.retention, deviceId: this.state.deviceId, status: this.status.get(gameId) ?? { status: game?.roots.length ? 'waiting' : 'setup' }, roots: game?.roots ?? [], versions: versions.map(({ id, createdAt, reason, safety, files }) => ({ id, createdAt, reason, safety, files: files.length })), activity: this.state.activity.filter(item => !gameId || item.gameId === gameId) };
   }
 }

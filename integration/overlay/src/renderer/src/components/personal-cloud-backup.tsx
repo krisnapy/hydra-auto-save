@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { BackupSnapshot } from "../../../main/services/personal-cloud-backup/core/controller.mjs";
+import type { BackupSnapshot, BackupProgress } from "../../../main/services/personal-cloud-backup/core/controller.mjs";
 import "./personal-cloud-backup.scss";
 
 declare global {
   interface Window {
-    personalBackup: { invoke: (request: Record<string, unknown>) => Promise<BackupSnapshot> };
+    personalBackup: {
+      invoke(request: { action: "progress"; gameId?: string }): Promise<BackupProgress>;
+      invoke(request: Record<string, unknown>): Promise<BackupSnapshot>;
+    };
   }
 }
 
@@ -23,6 +26,58 @@ const phaseLabels: Record<string, string> = {
   "restore-staging": "Menyiapkan file pemulihan", "restore-checking-source": "Memeriksa save sebelum penggantian", "restore-replacing": "Mengganti save", "restore-cleanup": "Menyelesaikan pemulihan", "rolling-back": "Mengembalikan kondisi save setelah kegagalan",
 };
 const phaseLabel = (phase: string) => phase.startsWith("safety-") ? `Backup pengaman: ${phaseLabels[phase.slice(7)] ?? phase.slice(7)}` : phaseLabels[phase] ?? phase;
+
+
+export function BackupProgressPanel({ gameId, busy }: { gameId?: string; busy: boolean }) {
+  const [progress, setProgress] = useState<BackupProgress>({ operations: [] });
+  useEffect(() => {
+    let disposed = false;
+    let pending = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let previous = "";
+    const poll = async () => {
+      if (disposed || pending || document.hidden) return;
+      clearTimeout(timer);
+      pending = true;
+      let active = busy;
+      try {
+        const result = await window.personalBackup.invoke({ action: "progress", gameId });
+        active ||= result.operations.length > 0;
+        const serialized = JSON.stringify(result);
+        if (!disposed && previous !== serialized) { previous = serialized; setProgress(result); }
+      } catch { /* Full snapshots report connection errors. */ }
+      finally {
+        pending = false;
+        if (!disposed && !document.hidden) timer = setTimeout(() => void poll(), active ? 250 : 1000);
+      }
+    };
+    const onVisible = () => { clearTimeout(timer); if (!document.hidden) void poll(); };
+    void poll();
+    document.addEventListener("visibilitychange", onVisible);
+    return () => { disposed = true; clearTimeout(timer); document.removeEventListener("visibilitychange", onVisible); };
+  }, [gameId, busy]);
+  return <>
+    {progress.operations.length > 0 ? <div className="personal-backup__progress">
+      {progress.operations.map(operation => {
+        const determinate = typeof operation.total === "number" && operation.total > 0;
+        const percent = determinate ? Math.max(0, Math.min(100, (operation.completed ?? 0) / operation.total! * 100)) : undefined;
+        return <div key={operation.id}>
+          <p><strong>{operationLabels[operation.kind] ?? operation.kind}{operation.title && ` · ${operation.title}`}</strong></p>
+          <p role="status">{phaseLabel(operation.phase)}</p>
+          <div key={operation.phase} className={`personal-backup__bar${determinate ? "" : " personal-backup__bar--indeterminate"}`} role="progressbar" aria-label={phaseLabel(operation.phase)} aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent}>
+            <span style={determinate ? { transform: `scaleX(${percent! / 100})` } : undefined} />
+          </div>
+          {determinate && <p>{operation.completed ?? 0} dari {operation.total} {operation.phase === "restore-replacing" ? "lokasi" : "file"} pada tahap ini</p>}
+          <small>Mulai {new Date(operation.startedAt).toLocaleTimeString()}</small>
+        </div>;
+      })}
+    </div> : <p role="status">{busy ? "Menyiapkan permintaan…" : "Tidak ada operasi yang berjalan."}</p>}
+    {progress.lastOperation?.kind && <p role="status">
+      {operationLabels[progress.lastOperation.kind] ?? progress.lastOperation.kind} terakhir: {progress.lastOperation.status === "failed" ? "gagal" : "selesai"} · {new Date(progress.lastOperation.at).toLocaleString()}
+      {progress.lastOperation.detail && ` — ${progress.lastOperation.detail}`}
+    </p>}
+  </>;
+}
 
 export function PersonalCloudBackup({ gameId }: { gameId?: string }) {
   const [snapshot, setSnapshot] = useState<BackupSnapshot>();
@@ -49,35 +104,21 @@ export function PersonalCloudBackup({ gameId }: { gameId?: string }) {
     setSnapshot(undefined);
     setError("");
     let historyPending = true;
-    let progressPending = false;
     void refresh().finally(() => { historyPending = false; });
     const timer = setInterval(() => {
       if (historyPending || document.hidden) return;
       historyPending = true;
       void refresh().finally(() => { historyPending = false; });
     }, 10000);
-    const progress = async () => {
-      if (progressPending || document.hidden) return;
-      progressPending = true;
-      const sequence = requestNumber.current;
-      try {
-        const result = await window.personalBackup.invoke({ action: "snapshot", gameId, lightweight: true });
-        if (mounted.current && sequence === requestNumber.current) setSnapshot(previous => ({ ...result, versions: previous?.versions ?? [] }));
-      } catch { /* The full refresh reports connection errors. */ }
-      finally { progressPending = false; }
-    };
-    void progress();
-    const progressTimer = setInterval(() => void progress(), 1000);
     const onVisible = () => {
       if (document.hidden) return;
-      void progress();
       if (!historyPending) {
         historyPending = true;
         void refresh().finally(() => { historyPending = false; });
       }
     };
     document.addEventListener("visibilitychange", onVisible);
-    return () => { mounted.current = false; requestNumber.current++; clearInterval(timer); clearInterval(progressTimer); document.removeEventListener("visibilitychange", onVisible); };
+    return () => { mounted.current = false; requestNumber.current++; clearInterval(timer); document.removeEventListener("visibilitychange", onVisible); };
   }, [refresh]);
   const action = async (name: string, values: Record<string, unknown> = {}) => {
     setBusy(true); setError(""); setMessage("");
@@ -117,20 +158,7 @@ export function PersonalCloudBackup({ gameId }: { gameId?: string }) {
         <p>{item.recovery?.automatic ? item.recovery.committed ? "Aplikasi akan memeriksa hasil pemulihan sebelumnya." : "Penanganan akan mencoba mengembalikan kondisi sebelumnya, sambil mempertahankan file yang dipindahkan." : "Catatan lama atau rusak memerlukan pemeriksaan manual. Jangan hapus catatan atau file hydra-previous/hydra-interrupted. Periksa salinan save dan backup pengaman sebelum mengubahnya."}</p>
         <div className="personal-backup__actions"><button disabled={opening} onClick={() => void openLocation("open-recovery", undefined, item.id)}>Buka catatan pemulihan</button>{item.recovery?.automatic && <button disabled={busy} onClick={() => void action("recover", { gameId: item.id })}>Tangani pemulihan</button>}</div>
       </div>)}
-      {snapshot.operations?.length > 0 ? <div className="personal-backup__progress" aria-live="polite">
-        {snapshot.operations.map(operation => <div key={operation.id}>
-          <p><strong>{operationLabels[operation.kind] ?? operation.kind}{operation.title && ` · ${operation.title}`}</strong></p>
-          <p>{phaseLabel(operation.phase)}</p>
-          {typeof operation.total === "number" && operation.total > 0
-            ? <><progress max={operation.total} value={operation.completed ?? 0} aria-label={phaseLabel(operation.phase)} /><p>{operation.completed ?? 0} dari {operation.total} {operation.phase === "restore-replacing" ? "lokasi" : "file"} pada tahap ini</p></>
-            : <progress aria-label={phaseLabel(operation.phase)} />}
-          <small>Mulai {new Date(operation.startedAt).toLocaleTimeString()} · pembaruan tahap {new Date(operation.updatedAt).toLocaleTimeString()}</small>
-        </div>)}
-      </div> : <p role="status">Tidak ada operasi yang berjalan.</p>}
-      {snapshot.lastOperation && (!gameId || snapshot.lastOperation.gameId === gameId) && <p role="status">
-        {operationLabels[snapshot.lastOperation.kind] ?? snapshot.lastOperation.kind} terakhir: {snapshot.lastOperation.status === "failed" ? "gagal" : "selesai"} · {new Date(snapshot.lastOperation.at).toLocaleString()}
-        {snapshot.lastOperation.detail && ` — ${snapshot.lastOperation.detail}`}
-      </p>}
+      <BackupProgressPanel key={gameId ?? "all"} gameId={gameId} busy={busy} />
       {!gameId ? <>
         {showGuide ? <div className="personal-backup__guide">
           <h4>Mulai backup pribadi</h4>
@@ -164,7 +192,7 @@ export function PersonalCloudBackup({ gameId }: { gameId?: string }) {
         {!snapshot.destination && <p>Pilih folder backup di Settings → Personal Cloud Backup.</p>}
         <h4>Lokasi save</h4>
         {!snapshot.roots.length && <p>Lokasi save belum dikenali. Jalankan deteksi atau pilih lokasi secara manual.</p>}
-        <ul className="personal-backup__locations">{snapshot.roots.map(root => <li key={root.id}><span>{root.path}</span><button disabled={opening} onClick={() => void openLocation("open-save", root.id)}>Buka lokasi save</button></li>)}</ul>
+        <ul className="personal-backup__locations">{snapshot.saveFolders.map(folder => <li key={folder.rootId}><span>{folder.path}</span><button disabled={opening} onClick={() => void openLocation("open-save", folder.rootId)}>Buka folder save</button></li>)}</ul>
         <div className="personal-backup__row"><div><strong>Lokasi backup game ini</strong><p>{snapshot.backupDirectory || "Folder backup belum dipilih"}</p></div><button disabled={opening || !snapshot.backupDirectory} onClick={() => void openLocation("open-backup")}>Buka lokasi backup</button></div>
         <h4>Riwayat perangkat ini</h4>
         {snapshot.versions.length === 0 && <p>Belum ada backup lengkap yang dapat dipulihkan.</p>}

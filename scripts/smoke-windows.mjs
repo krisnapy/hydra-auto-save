@@ -69,6 +69,8 @@ try {
     await delay(1000);
   }
   if (!snapshot || !Array.isArray(snapshot.setup?.games) || !Array.isArray(snapshot.interrupted) || !Array.isArray(snapshot.operations) || typeof snapshot.enabled !== 'boolean' || !snapshot.ludusavi?.endsWith('ludusavi.exe')) throw new Error('IPC atau Ludusavi dalam paket tidak tersedia.');
+  const progress = await evaluate('window.personalBackup.invoke({ action: "progress" })');
+  if (!Array.isArray(progress?.operations) || "versions" in progress || !Array.isArray(snapshot.saveFolders)) throw new Error('Jalur progres atau lokasi folder save tidak tersedia.');
   metrics.ipcMs = Date.now() - startedAt;
   await evaluate('location.hash = "/settings"');
   let visible = false;

@@ -1,3 +1,4 @@
+import { dirname } from "node:path";
 import { stat } from "node:fs/promises";
 import { dialog, shell } from "electron";
 import { registerEvent } from "./register-event";
@@ -25,14 +26,13 @@ registerEvent("personalBackup", async (event, request: unknown) => {
       const snapshot = await controller.snapshot(gameId, true);
       const root = input.action === "open-save" ? snapshot.roots.find(item => item.id === string(input.rootId)) : undefined;
       if (input.action === "open-save" && !root) throw new Error("Lokasi save belum diatur atau sudah berubah. Deteksi ulang lokasi save.");
-      const target = root?.path ?? snapshot.backupDirectory;
+      const target = root ? (root.kind === "file" ? dirname(root.path) : root.path) : snapshot.backupDirectory;
       if (!target) throw new Error("Folder backup belum dipilih.");
       const info = await stat(target).catch((error: NodeJS.ErrnoException) => {
         if (error.code === "ENOENT") throw new Error(root ? "Lokasi save sudah tidak ditemukan. Deteksi ulang atau pilih lokasi save." : "Folder backup belum tersedia. Buat backup terlebih dahulu atau periksa folder sinkronisasi.");
         throw error;
       });
-      if (root?.kind === "file" && info.isFile()) shell.showItemInFolder(target);
-      else if (info.isDirectory()) {
+      if (info.isDirectory()) {
         const failure = await shell.openPath(target);
         if (failure) throw new Error(`Tidak dapat membuka folder: ${failure}`);
       } else throw new Error("Lokasi bukan file save atau folder yang dapat dibuka.");
@@ -51,6 +51,7 @@ registerEvent("personalBackup", async (event, request: unknown) => {
       if (confirmation.response === 1) await recoverPersonalBackup(string(gameId));
       break;
     }
+    case "progress": return controller.progressSnapshot(gameId);
     case "snapshot": return controller.snapshot(gameId, input.lightweight === true);
     case "configure": {
       if (typeof input.enabled !== "boolean" || !Number.isInteger(input.retention)) throw new Error("Pengaturan tidak valid.");

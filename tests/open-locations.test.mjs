@@ -2,16 +2,18 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
+import path from 'node:path';
 import ts from 'typescript';
 
 async function harness({ file = false, missing = false, failure = '' } = {}) {
   let handler;
   const calls = [];
-  const snapshot = { roots: [{ id: 'configured', path: 'C:/save/my progress.sav', kind: file ? 'file' : 'directory' }], backupDirectory: 'C:/cloud/game' };
+  const snapshot = { saveFolders: [{ rootId: 'configured', path: file ? 'C:/save' : 'C:/save/my progress.sav' }], roots: [{ id: 'configured', path: 'C:/save/my progress.sav', kind: file ? 'file' : 'directory' }], backupDirectory: 'C:/cloud/game' };
   const controller = { snapshot: async (...args) => { calls.push(['snapshot', ...args]); return snapshot; } };
   const source = await readFile(new URL('../integration/overlay/src/main/events/personal-cloud-backup.ts', import.meta.url), 'utf8');
   const modules = {
-    'node:fs/promises': { stat: async path => { calls.push(['stat', path]); if (missing) throw Object.assign(new Error('missing'), { code: 'ENOENT' }); return { isFile: () => file, isDirectory: () => !file }; } },
+    'node:path': { dirname: path.posix.dirname },
+    'node:fs/promises': { stat: async path => { calls.push(['stat', path]); if (missing) throw Object.assign(new Error('missing'), { code: 'ENOENT' }); return { isFile: () => false, isDirectory: () => true }; } },
     electron: { dialog: {}, shell: { openPath: async path => { calls.push(['open', path]); return failure; }, showItemInFolder: path => calls.push(['reveal', path]) } },
     './register-event': { registerEvent: (_, callback) => { handler = callback; } },
     './epic/assert-trusted-sender': { assertTrustedEpicSender: event => { if (!event.trusted) throw new Error('untrusted'); } },
@@ -23,7 +25,7 @@ async function harness({ file = false, missing = false, failure = '' } = {}) {
   return { calls, invoke: input => handler({ trusted: true }, { gameId: 'steam:1', ...input }), handler };
 }
 
-test('Explorer opens configured folders and reveals save files without executing them or trusting supplied paths', async () => {
+test('Explorer opens configured save folders without revealing or executing individual files or trusting supplied paths', async () => {
   const h = await harness();
   await h.invoke({ action: 'open-save', rootId: 'configured', path: 'C:/untrusted.exe' });
   await h.invoke({ action: 'open-backup' });
@@ -33,7 +35,7 @@ test('Explorer opens configured folders and reveals save files without executing
   await assert.rejects(h.handler({ trusted: false }, { action: 'open-backup' }), /untrusted/);
   const f = await harness({ file: true });
   await f.invoke({ action: 'open-save', rootId: 'configured' });
-  assert.deepEqual(f.calls.filter(c => ['open', 'reveal'].includes(c[0])), [['reveal', 'C:/save/my progress.sav']]);
+  assert.deepEqual(f.calls.filter(c => ['open', 'reveal'].includes(c[0])), [['open', 'C:/save']]);
 });
 
 test('missing locations and Explorer failures are reported instead of creating folders', async () => {
