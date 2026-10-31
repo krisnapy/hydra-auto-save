@@ -1,6 +1,7 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { createHash } = require('node:crypto');
+const verifyPublicDownload = require('./verify-public-download.cjs');
 
 module.exports = async ({ github, context, core }) => {
   const { owner, repo } = context.repo;
@@ -27,14 +28,7 @@ module.exports = async ({ github, context, core }) => {
       const asset = release.assets.find(item => item.name === file.name);
       if (file.hash && file.hash !== digest) throw new Error(`Checksum mismatch: ${file.name}`);
       if (!asset || asset.state !== 'uploaded' || asset.size !== data.length || asset.digest !== `sha256:${digest}`) throw new Error(`Asset mismatch: ${file.name}`);
-      let response;
-      for (let attempt = 0; attempt < 12; attempt++) {
-        response = await fetch(asset.browser_download_url, {method: 'HEAD', redirect: 'follow'});
-        if (response.ok) break;
-        await new Promise(resolve => setTimeout(resolve, 5000));
-      }
-      if (!response.ok || Number(response.headers.get('content-length')) !== asset.size) throw new Error(`Anonymous download failed: ${file.name}`);
-      core.info(`Anonymous download verified: ${asset.browser_download_url}`);
+      await verifyPublicDownload(asset, { log: message => core.info(message) });
     }
   };
   try {
