@@ -1,0 +1,48 @@
+name: Separate Windows downloads
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/split-windows.yml', 'scripts/split-windows.mjs']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  split:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.21.0
+      - name: Download existing verified package
+        uses: actions/download-artifact@v4
+        with:
+          name: Hydra-Personal-Backup-Windows-Verified
+          path: package
+          run-id: 41195867955
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify original files and separate downloads
+        run: node scripts/split-windows.mjs package downloads
+      - name: Installer download
+        uses: actions/upload-artifact@v4
+        with:
+          name: Hydra-Personal-Backup-Installer-Windows-x64
+          path: downloads/setup/
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+      - name: Portable download
+        uses: actions/upload-artifact@v4
+        with:
+          name: Hydra-Personal-Backup-Portable-Windows-x64
+          path: downloads/portable/
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
