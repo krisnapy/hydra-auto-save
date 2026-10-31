@@ -2,6 +2,11 @@ const fs = require('node:fs');
 const YAML = require('yaml');
 const config = YAML.parse(fs.readFileSync('electron-builder.yml', 'utf8'));
 
+// Keep release compression unchanged unless explicitly comparing a faster build.
+const compression = process.env.HYDRA_BUILD_COMPRESSION || 'normal';
+if (!['normal', 'store'].includes(compression)) throw new Error('Unknown build compression');
+config.compression = compression;
+
 // Keep Hydra's product name/profile so the existing local library is available.
 // Use a separate installer identity and executable to avoid replacing its files.
 config.appId = 'id.krisnapy.hydra.personalbackup';

@@ -1,0 +1,26 @@
+name: Windows quick check
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'tests/visual/**'
+      - '.github/workflows/visual-tests.yml'
+      - '.github/workflows/split-windows.yml'
+      - '.github/workflows/ludusavi.yml'
+      - '.github/workflows/verify-windows.yml'
+      - 'scripts/split-windows.mjs'
+      - 'README.md'
+      - 'docs/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  quick:
+    uses: ./.github/workflows/windows-build.yml
+    with:
+      mode: quick
+    secrets:
+      HYDRA_ONEDRIVE_CLIENT_ID: ${{ secrets.HYDRA_ONEDRIVE_CLIENT_ID }}

@@ -1,0 +1,213 @@
+name: Windows build pipeline
+
+on:
+  workflow_call:
+    inputs:
+      mode:
+        type: string
+        required: true
+      compression:
+        type: string
+        default: normal
+    secrets:
+      HYDRA_ONEDRIVE_CLIENT_ID:
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-${{ inputs.mode }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 90
+    outputs:
+      dependency-cache-key: ${{ steps.dependencies.outputs.cache-primary-key }}
+      dependency-cache-hit: ${{ steps.dependencies.outputs.cache-hit }}
+    defaults:
+      run:
+        shell: bash
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      HUSKY: '0'
+      # Public endpoints from the official v4.3.0 release build (run 41142471461).
+      MAIN_VITE_API_URL: https://hydra-api-us-east-1.losbroxas.org
+      MAIN_VITE_AUTH_URL: https://auth.hydra.losbroxas.org
+      MAIN_VITE_CHECKOUT_URL: https://checkout.hydralauncher.gg
+      MAIN_VITE_NIMBUS_API_URL: ''
+      MAIN_VITE_EXTERNAL_RESOURCES_URL: https://assets.hydralauncher.gg
+      RENDERER_VITE_EXTERNAL_RESOURCES_URL: https://assets.hydralauncher.gg
+      # Always use the bundled renderer containing our settings component.
+      MAIN_VITE_LAUNCHER_SUBDOMAIN: ''
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: backup
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.21.0
+          cache: npm
+          cache-dependency-path: backup/package-lock.json
+      - name: Test backup module
+        working-directory: backup
+        run: |
+          npm ci --ignore-scripts
+          npm test
+          npm run check:integration
+      - name: Get pinned Hydra source
+        uses: actions/checkout@v4
+        with:
+          repository: hydralauncher/hydra
+          ref: 5845549311a20d485d027da875307fc70897bfdc
+          path: hydra
+          persist-credentials: false
+      - name: Integrate Personal Backup
+        env:
+          HYDRA_ONEDRIVE_CLIENT_ID: ${{ secrets.HYDRA_ONEDRIVE_CLIENT_ID }}
+          HYDRA_REQUIRE_ONEDRIVE_CLIENT_ID: '1'
+        run: node backup/scripts/prepare-windows.mjs hydra
+      - name: Install build tools
+        run: |
+          corepack enable
+          corepack prepare yarn@1.22.22 --activate
+      - name: Restore pinned Hydra dependencies
+        id: dependencies
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            hydra/node_modules
+            hydra/hydra-native
+            hydra/legendary
+            hydra/ludusavi
+            hydra/binaries
+            hydra/.cache
+          key: hydra-deps-v1-windows2022-x64-node22.21.0-5845549311a20d485d027da875307fc70897bfdc-${{ hashFiles('hydra/yarn.lock', 'hydra/package.json') }}
+      - uses: dtolnay/rust-toolchain@stable
+        if: steps.dependencies.outputs.cache-hit != 'true'
+      - name: Install Hydra dependencies and bundled tools
+        if: steps.dependencies.outputs.cache-hit != 'true'
+        working-directory: hydra
+        run: yarn install --frozen-lockfile --network-timeout 300000
+      - name: Validate dependencies with Electron
+        working-directory: hydra
+        run: |
+          yarn check --integrity
+          node ../backup/scripts/verify-build-cache.cjs
+      - name: Save validated pinned dependencies
+        if: steps.dependencies.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            hydra/node_modules
+            hydra/hydra-native
+            hydra/legendary
+            hydra/ludusavi
+            hydra/binaries
+            hydra/.cache
+          key: ${{ steps.dependencies.outputs.cache-primary-key }}
+      - name: Reproduce and verify Ludusavi Steam ID detection
+        run: node backup/scripts/check-ludusavi.mjs hydra/ludusavi/ludusavi.exe --live-manifest
+      - name: Check types, compile and package
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+          BUILD_MODE: ${{ inputs.mode }}
+          BUILD_COMPRESSION: ${{ inputs.compression }}
+        run: node backup/scripts/build-windows.mjs hydra "$BUILD_MODE" "$BUILD_COMPRESSION"
+      - name: Audit packaged files
+        run: node backup/scripts/audit-windows-package.mjs hydra package/package-audit.json
+      - name: Verify bundled Ludusavi
+        working-directory: hydra
+        shell: pwsh
+        run: |
+          $binary = 'dist/win-unpacked/resources/ludusavi/ludusavi.exe'
+          if (!(Test-Path $binary)) { throw 'Bundled Ludusavi is missing' }
+          & $binary --version
+          if ($LASTEXITCODE -ne 0) { throw 'Bundled Ludusavi cannot run' }
+      - name: Measure installed application startup and tray lifecycle
+        shell: pwsh
+        run: |
+          node backup/scripts/smoke-windows.mjs 'hydra/dist/win-unpacked/Hydra Personal Backup.exe' package --tray
+          if ($LASTEXITCODE -ne 0) { throw 'Installed application or tray lifecycle failed' }
+      - name: Collect installers and checksums
+        if: inputs.mode == 'installer'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force package | Out-Null
+          Copy-Item hydra/dist/Hydra-Personal-Backup-*.exe package/
+          Copy-Item backup/docs/panduan-windows.md package/README.md
+          $installers = Get-ChildItem package/*.exe
+          if ($installers.Count -ne 2) { throw 'Expected installer and portable executable' }
+          $installers | ForEach-Object { "$( (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant() )  $($_.Name)" } | Set-Content package/SHA256SUMS.txt
+      - name: Downloadable Windows package
+        if: inputs.mode == 'installer'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Hydra-Personal-Backup-Windows-x64
+          path: package/
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+      # Quick runs validate the unpacked executable without spending time creating
+      # or uploading a second, compressed distribution of the same app.
+      - name: Build measurements and diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Windows-${{ inputs.mode }}-build-report
+          path: |
+            package/build-timings.json
+            package/package-audit.json
+            package/startup.log
+            package/*.png
+            package/Startup-*.json
+          if-no-files-found: ignore
+          retention-days: 14
+          compression-level: 0
+          # Installer downloads are uploaded separately above.
+          # Exclude executables to avoid duplicating large artifacts.
+
+  warm-cache:
+    needs: build
+    if: needs.build.outputs.dependency-cache-hit != 'true'
+    runs-on: windows-2022
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: backup
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: hydralauncher/hydra
+          ref: 5845549311a20d485d027da875307fc70897bfdc
+          path: hydra
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.21.0
+      - name: Start warm dependency measurement
+        shell: pwsh
+        run: '"CACHE_STARTED=$([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds())" >> $env:GITHUB_ENV'
+      - uses: actions/cache/restore@v4
+        with:
+          path: |
+            hydra/node_modules
+            hydra/hydra-native
+            hydra/legendary
+            hydra/ludusavi
+            hydra/binaries
+            hydra/.cache
+          key: ${{ needs.build.outputs.dependency-cache-key }}
+          fail-on-cache-miss: true
+      - name: Verify native runtime without compilation or installation
+        working-directory: hydra
+        shell: pwsh
+        run: |
+          node ../backup/scripts/verify-build-cache.cjs
+          if ($LASTEXITCODE -ne 0) { throw 'Warm cache native validation failed' }
+          $elapsed = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() - [long]$env:CACHE_STARTED
+          "Warm dependency restore and Electron validation: $elapsed ms; no Rust compilation or dependency installation." | Tee-Object -FilePath $env:GITHUB_STEP_SUMMARY -Append
