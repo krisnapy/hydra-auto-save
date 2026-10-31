@@ -7,7 +7,7 @@ import { promisify } from 'node:util';
 import { Ludusavi } from '../module/ludusavi.mjs';
 
 const binary = path.resolve(process.argv[2]);
-const root = await fs.mkdtemp(path.join(os.tmpdir(), 'hydra-ludusavi-'));
+const root = await fs.mkdtemp(path.join(await fs.realpath(os.tmpdir()), 'hydra-ludusavi-'));
 try {
   const save = path.join(root, 'test-save.sav').replaceAll('\\', '/');
   const config = path.join(root, 'config');
@@ -25,7 +25,7 @@ try {
     const found = await detector.discover(game);
     assert.equal(found.title, 'Hydra Save Test');
     assert.equal(found.selections.length, 1);
-    assert.equal(path.resolve(found.selections[0].path).toLowerCase(), path.resolve(save).toLowerCase());
+    assert.equal((await fs.realpath(found.selections[0].path)).toLowerCase(), (await fs.realpath(save)).toLowerCase());
   }
   await assert.rejects(detector.discover({ shop: 'steam', objectId: '1245629' }), /Steam ID belum dikenali/);
   assert.equal(await fs.readFile(save, 'utf8'), 'example progress');
