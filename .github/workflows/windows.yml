@@ -114,6 +114,8 @@ jobs:
         run: yarn typecheck
       - name: Build Windows application
         working-directory: hydra
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
         run: |
           yarn electron-vite build
           yarn electron-builder --win --x64 --config personal-backup-builder.cjs --publish never
