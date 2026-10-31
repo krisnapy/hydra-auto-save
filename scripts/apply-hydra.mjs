@@ -1,6 +1,7 @@
 import * as fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readOneDriveClientId } from './onedrive-build-config.mjs';
 import { digest, safePath } from '../module/engine.mjs';
 
 const project = fileURLToPath(new URL('..', import.meta.url));
@@ -102,6 +103,7 @@ async function walk(directory) {
 
 export async function applyHydra(target) {
   const root = await safePath(path.resolve(target));
+  const clientId = await readOneDriveClientId();
   const sources = {};
   const originals = {};
   for (const [file, expected] of Object.entries(metadata.files)) {
@@ -118,6 +120,9 @@ export async function applyHydra(target) {
   const overlay = path.join(project, 'integration/overlay');
   for (const file of await walk(overlay)) writes.push([path.relative(overlay, file), await fs.readFile(file)]);
   for (const file of await walk(path.join(project, 'module'))) writes.push([path.join('src/main/services/personal-cloud-backup/core', path.basename(file)), await fs.readFile(file)]);
+  const config = writes.find(([file]) => file === path.join('src/main/services/personal-cloud-backup/core', 'onedrive.mjs'));
+  if (!config) throw new Error('Modul OneDrive tidak ditemukan.');
+  config[1] = Buffer.from(config[1].toString().replace("process.env.HYDRA_ONEDRIVE_CLIENT_ID || ''", JSON.stringify(clientId)));
   for (const [file] of writes) {
     await safePath(path.join(root, file));
     try { await fs.access(path.join(root, file)); throw new Error(`File tambahan sudah ada: ${file}. Tidak ada perubahan yang ditulis.`); }

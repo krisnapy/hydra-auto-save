@@ -67,6 +67,9 @@ jobs:
           path: hydra
           persist-credentials: false
       - name: Integrate Personal Backup
+        env:
+          HYDRA_ONEDRIVE_CLIENT_ID: ${{ secrets.HYDRA_ONEDRIVE_CLIENT_ID }}
+          HYDRA_REQUIRE_ONEDRIVE_CLIENT_ID: '1'
         run: node backup/scripts/prepare-windows.mjs hydra
       - name: Install build tools
         run: |

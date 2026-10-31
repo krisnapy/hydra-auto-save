@@ -5,11 +5,11 @@ Paket khusus Hydra 4.3.0 dengan Personal Cloud Backup. Memerlukan Windows 10/11 
 1. Tutup Hydra yang sedang berjalan, termasuk ikon di dekat jam Windows. Jangan jalankan kedua salinan bersamaan karena memakai pustaka/pengaturan Hydra yang sama.
 2. Jalankan file `Hydra-Personal-Backup-…-windows-x64-setup.exe`. Pilih folder baru, berbeda dari instalasi Hydra resmi. Alternatif: jalankan file `…-portable.exe`.
 3. Buka pintasan **Hydra Personal Backup**.
-4. Buka **Settings → Personal Cloud Backup** dan ikuti **Mulai backup pribadi**: pilih folder tujuan, pilih game, deteksi atau tentukan save, buat backup percobaan, lalu tekan **Aktifkan dan selesaikan**. Untuk cloud, gunakan folder lokal yang disinkronkan OneDrive, Google Drive, Dropbox, atau pCloud. Aplikasi cloud harus sudah terpasang dan masuk ke akun kamu.
+4. Buka **Settings → Personal Cloud Backup** dan ikuti **Mulai backup pribadi**: pilih folder tujuan, pilih game, deteksi atau tentukan save, buat backup percobaan, lalu tekan **Aktifkan dan selesaikan**. Untuk OneDrive langsung, tekan Hubungkan OneDrive dan ikuti kode login Microsoft; aplikasi OneDrive tidak perlu dipasang. Alternatif folder sinkronisasi OneDrive/Google Drive/Dropbox/pCloud tetap memerlukan aplikasi cloud terkait. Lihat [panduan OneDrive](onedrive.md).
 5. Pada halaman game, periksa lokasi save yang ditemukan. Jika muncul **Perlu pengaturan**, pilih lokasi save manual. Coba **Backup sekarang** dan pastikan **Backup lokal selesai**.
 6. Untuk memulihkan, tutup game, pilih versi pada riwayat, lalu pilih **Pulihkan**. Kondisi save saat ini dicadangkan terlebih dahulu.
 
-Database lokasi save diunduh pada penggunaan pertama; setelah itu deteksi memakai cache. Internet diperlukan untuk unduhan awal. **Backup lokal selesai** belum membuktikan unggahan cloud selesai; periksa aplikasi cloud.
+Database lokasi save diunduh pada penggunaan pertama; setelah itu deteksi memakai cache. Internet diperlukan untuk unduhan awal. **Backup lokal selesai** belum membuktikan unggahan cloud selesai; periksa panel OneDrive untuk unggahan langsung, atau aplikasi cloud untuk folder sinkronisasi.
 
 Gunakan salinan save contoh untuk percobaan pertama. Dukungan awal Steam dan game custom dengan executable diketahui. Pemulihan lintas PC, Registry, Epic terkelola, dan emulator belum didukung.
 
@@ -62,7 +62,7 @@ Jika ada catatan pemulihan yang terputus, aplikasi memblokir backup dan pemuliha
 
 Jika catatan lama, rusak, lokasi berubah, atau hasil tidak dapat dipastikan, penanganan otomatis ditolak. Gunakan **Buka catatan pemulihan**, pertahankan journal serta folder `hydra-previous`/`hydra-interrupted`, dan periksa salinan save serta backup pengaman sebelum perubahan manual. Jangan menghapus journal hanya untuk menghilangkan peringatan. Penanganan ini tidak menjamin perlindungan terhadap kehilangan daya atau kerusakan disk.
 
-Pengguna lama yang pernah berhasil backup dan masih mengaktifkan Auto Backup tidak harus mengulang panduan; gunakan **Buka panduan pengaturan awal** jika diperlukan. Pergantian tujuan backup meminta backup percobaan baru. Versi ini belum memakai OAuth atau sinkronisasi achievement personal cloud.
+Pengguna lama yang pernah berhasil backup dan masih mengaktifkan Auto Backup tidak harus mengulang panduan; gunakan **Buka panduan pengaturan awal** jika diperlukan. Pergantian tujuan backup meminta backup percobaan baru. Versi 0.3 memakai OAuth OneDrive pribadi. Sinkronisasi achievement belum tersedia.
 
 ## Status jeda aman dan save yang terus berubah (0.2.2)
 

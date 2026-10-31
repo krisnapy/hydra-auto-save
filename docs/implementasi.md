@@ -2,6 +2,18 @@
 
 Tanggal: 1 November 2026 WITA. Status: paket Windows awal tersedia; uji game nyata belum dilakukan.
 
+## OneDrive langsung — 0.3.0
+
+Tahap awal OAuth device authorization untuk akun Microsoft pribadi memakai endpoint consumers, scope Files.ReadWrite.AppFolder dan offline_access, tanpa client secret. Client ID publik proyek disediakan pengguna melalui .env lokal/GitHub Secret, lalu ditanamkan hanya pada hasil build sebagai bawaan. Nilai dihapus dari sumber terbaru setelah pengguna meminta konfigurasi environment; commit privat lama tetap memuat pengenal publik, tanpa token/client secret. Microsoft menerima permintaan device-code untuk ID tersebut (masa kode900detik); uji ini tidak melakukan login, pertukaran token, atau akses drive akun nyata.
+
+Token akses/refresh dipertahankan di proses utama dengan Electron safeStorage. Refresh bersamaan berbagi satu permintaan, token berotasi disimpan; disconnect menunggu pekerjaan jaringan sebelum menghapus kredensial agar refresh terlambat tidak menghidupkan sesi kembali. Halaman tepercaya mengirim perintah terbatas melalui IPC. URL login ditetapkan oleh proses utama; renderer tidak menyediakan URL, token, path impor atau isi paket.
+
+Setiap versi normal baru setelah akun terhubung dipaketkan JSON+gzip dan disalin ke outbox di profil aplikasi. Batas32MiB/10.000file,48MiB metadata/ekstraksi,512MiB/1.000pekerjaan tertunda. Outbox independen dari retensi lokal, terikat drive asal, satu unggahan aktif, retry/backoff dan Retry-After. Nama remote memuat hash game, perangkat, versi dan SHA-256 paket; path outbox pendek memuat hash drive+nama sehingga nama Windows tetap pendek dan dua akun tidak berbagi file antrean.200receipt unggahan terbaru disimpan; tidak ada penghapusan versi cloud otomatis.
+
+Unduhan dari URL HTTPS OneDrive yang dikenali tidak menerima Authorization. Hash paket/blob, root lokal, jenis/root present, path Windows/duplikat huruf besar-kecil, fingerprint, perangkat dan game diverifikasi sebelum publish staging atomik. Hanya perangkat serta konfigurasi save yang sama didukung. Unduh memerlukan konfirmasi dan hanya menambah riwayat; pemulihan berikutnya tetap memakai konfirmasi native, restore gate, pemeriksaan proses, backup pengaman dan journal. Import tidak menulis save.
+
+77tes modul dan28tes UI/interaksi lulus lokal, termasuk roundtrip file asli fixture melalui paket/impor/pemulihan, korupsi/traversal, offline/restart, akun berbeda, refresh tunggal dan pemisahan bearer dari URL unduhan. UI memakai data contoh, bukan akun Microsoft nyata. Pemeriksaan integrasi lokal lulus. Hasil Windows/package dan tautan unduhan dicatat setelah CI selesai. [Panduan dan batas OneDrive](onedrive.md).
+
 ## Panel backup ringkas — 0.2.3
 
 Desain Panel samping diterapkan hanya pada bagian backup di halaman game. Grid menempatkan konteks/lokasi save di kiri dan kartu Personal Cloud di kanan; pada lebar jendela sampai1100 px susunannya menjadi satu kolom. Navigasi, hero, tombol Mainkan dan halaman Settings Hydra tidak didesain ulang. Path lengkap serta aktivitas berada dalam detail yang dapat dibuka. Nama folder pendek tetap membuka rootId tersimpan melalui IPC yang sama, tanpa menerima path dari renderer.

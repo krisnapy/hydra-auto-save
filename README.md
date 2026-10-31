@@ -45,7 +45,7 @@ Tahap awal mencakup game PC **Steam dan custom** dengan executable diketahui. Ga
 
 ## Coba mesin backup tanpa Hydra
 
-Memerlukan Node.js 20 atau lebih baru. Mesin backup dan pengujiannya tidak memerlukan paket tambahan.
+Memerlukan Node.js 20.12 atau lebih baru. Mesin backup dan pengujiannya tidak memerlukan paket tambahan.
 
 ```sh
 npm test
@@ -71,14 +71,14 @@ Setelah itu, siapkan dependensi dan komponen native menggunakan prosedur build s
 ## Pengaturan di Hydra hasil build
 
 1. Buka **Settings → Personal Cloud Backup**.
-2. Pilih folder lokal yang dikelola aplikasi cloud, misalnya `Dropbox\Hydra Backups`.
+2. Pilih folder backup lokal. Untuk OneDrive langsung, folder ini tidak perlu disinkronkan aplikasi lain; alternatifnya gunakan folder sinkronisasi seperti `Dropbox\Hydra Backups`.
 3. Aktifkan **Auto Backup**. Modul mencoba menemukan Ludusavi bawaan Hydra. Jika tidak ditemukan, pilih `ludusavi.exe` secara manual.
 4. Deteksi pertama mengunduh database Ludusavi ke pengaturan modul yang terpisah. Setelah database tersedia, deteksi memakai cache lokal. Tombol **Perbarui database lokasi save** tersedia untuk pembaruan berikutnya.
 5. Buka halaman game untuk melihat lokasi, status, riwayat, **Backup sekarang**, dan **Pulihkan**. Untuk game yang belum dikenali, pilih file atau folder save manual.
 
 Mematikan Auto Backup menghentikan penjadwalan berikutnya. Operasi yang sudah berjalan diselesaikan dengan aman. Tombol backup manual tetap dapat digunakan.
 
-**Backup lokal selesai** berarti file lokal selesai dibuat. Periksa aplikasi cloud untuk mengetahui status unggahan; modul tidak mengklaim unggahan selesai.
+**Backup lokal selesai** berarti file lokal selesai dibuat. Untuk OneDrive langsung, periksa status unggahan terpisah pada panel OneDrive. Untuk folder sinkronisasi penyedia lain, periksa aplikasi cloud.
 
 ## Batas versi ini
 
@@ -95,7 +95,7 @@ Pengujian tampilan halaman game tersedia dalam [galeri dan laporan visual](docs/
 - Symlink/junction dan folder yang saling bertumpuk ditolak. File Registry, save terlindungi/terenkripsi, dan file cloud yang belum tersedia secara lokal dapat memerlukan penanganan lain.
 - Pemantauan file otomatis disegarkan setiap 60 detik. Penambahan slot save dapat terlambat ditemukan hingga pemindaian berikutnya. Jika semua lokasi save hilang, backup normal ditolak untuk menjaga riwayat lama.
 - Mengubah lokasi save manual dapat membuat versi dari lokasi lama tidak dapat dipulihkan sampai pengaturan yang cocok dipilih kembali.
-- Belum ada batas ukuran backup, kuota total, kompresi, atau pengukuran dampak performa untuk save besar. Riwayat pengaman dapat terus memakai ruang disk.
+- Backup lokal belum dibatasi kuota total dan riwayat pengaman dapat terus memakai ruang disk. Paket OneDrive memakai gzip, batas 32 MiB save per versi, serta batas antrean 512 MiB/1.000 pekerjaan. Riwayat cloud belum dipangkas otomatis.
 - Jika pemulihan terputus dan catatan pemulihan masih ada, pemulihan berikutnya diblokir. Pertahankan catatan, backup pengaman, serta folder `.hydra-previous-…` untuk pemeriksaan; jangan menghapusnya tanpa memastikan progres yang akan dipertahankan.
 
 ## Pemeriksaan integrasi tambahan

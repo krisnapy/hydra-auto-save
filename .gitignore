@@ -6,3 +6,10 @@ node_modules/
 dist/
 .DS_Store
 visual-results/
+
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+credentials.bin
+credentials.bin.*

@@ -39,3 +39,11 @@ Lihat versi OneDrive pada halaman game → Unduh ke riwayat → konfirmasi unduh
 ## Validasi
 
 Tes lokal mencakup backup→paket→unduh/impor→pemulihan berpengaman, korupsi/path traversal/perangkat berbeda, antrean offline/restart/akun berbeda, rotasi token bersamaan, sanitasi error, dan pemisahan token dari URL unduhan. Tes browser memakai Microsoft/OneDrive simulasi. Belum ada login, upload/download OneDrive nyata atau uji save game pengguna. Client ID proyek telah diberikan pengguna; persetujuan akun nyata masih diperlukan untuk uji tersebut.
+
+## Konfigurasi proyek dan CI
+
+Nilai `HYDRA_ONEDRIVE_CLIENT_ID` disimpan di `.env` lokal (izin600, diabaikan repository) dan Repository Secret bernama sama pada GitHub Actions. `.env.example` hanya berisi nama variabel kosong. Langkah Integrate Personal Backup membaca secret tersebut sebagai environment dan berhenti bila kosong/tidak valid; tidak ada fallback ID proyek dalam kode repository.
+
+Pemasang sumber membaca hanya variabel client ID dan menanamkan pengenal publik itu ke modul hasil build. File `.env`, nilai konfigurasi lain, client secret, serta token akun tidak disalin ke aplikasi. Client ID tetap dapat ditemukan pada installer: desktop OAuth membutuhkan pengenal ini dan tidak dapat menjadikannya rahasia. Token per pengguna tetap disimpan terlindungi Windows, bukan dikirim ke GitHub Secrets.
+
+Plugin GitHub saat implementasi tidak menyediakan penulisan Secrets, sehingga pengelola harus membuat Repository Secret melalui Settings → Secrets and variables → Actions. Tidak ada klaim secret telah dibuat sampai dikonfirmasi pengguna. Repository tetap privat. ID proyek pernah terdapat dalam commit privat sebelum konfigurasi dipindahkan; sumber terbaru menghapusnya, tetapi riwayat tersebut tidak ditulis ulang.

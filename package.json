@@ -10,7 +10,7 @@
     "check:integration": "node scripts/check-integration.mjs"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=20.12"
   },
   "devDependencies": {
     "@types/node": "^20.19.43",
