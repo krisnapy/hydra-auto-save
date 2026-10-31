@@ -68,7 +68,7 @@ try {
     }
     await delay(1000);
   }
-  if (!snapshot || !Array.isArray(snapshot.operations) || typeof snapshot.enabled !== 'boolean' || !snapshot.ludusavi?.endsWith('ludusavi.exe')) throw new Error('IPC atau Ludusavi dalam paket tidak tersedia.');
+  if (!snapshot || !Array.isArray(snapshot.setup?.games) || !Array.isArray(snapshot.interrupted) || !Array.isArray(snapshot.operations) || typeof snapshot.enabled !== 'boolean' || !snapshot.ludusavi?.endsWith('ludusavi.exe')) throw new Error('IPC atau Ludusavi dalam paket tidak tersedia.');
   metrics.ipcMs = Date.now() - startedAt;
   await evaluate('location.hash = "/settings"');
   let visible = false;
@@ -83,6 +83,12 @@ try {
     await delay(1000);
   }
   if (!visible) throw new Error('Pengaturan Personal Cloud Backup tidak tampil.');
+  const guideReady = await evaluate(`(() => {
+    const section = document.querySelector('section.personal-backup');
+    const finish = [...section.querySelectorAll('button')].find(button => button.textContent.trim() === 'Aktifkan dan selesaikan');
+    return Boolean(section.textContent.includes('Mulai backup pribadi') && section.textContent.includes('Buat backup percobaan') && finish?.disabled);
+  })()`);
+  if (!guideReady) throw new Error('Panduan pengaturan awal tidak tampil atau bisa selesai tanpa backup percobaan.');
   metrics.settingsMs = Date.now() - startedAt;
   const screenshot = await call('Page.captureScreenshot', { format: 'png' });
   await fs.writeFile(path.join(output, 'Personal-Backup-Windows.png'), Buffer.from(screenshot.data, 'base64'));

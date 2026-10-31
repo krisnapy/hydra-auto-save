@@ -307,3 +307,92 @@ test('new corrupt backup cannot trigger retention even if older versions are cac
   await fs.access(path.join(engine.directory('steam:cache'), old.id, 'COMPLETE'));
   assert.deepEqual((await original('steam:cache', { fresh: true })).map(v => v.id), [old.id]);
 });
+
+async function interruptedFixture(t, committed = false) {
+  const value = await fixture(t);
+  const { engine, roots, file } = value;
+  const target = await engine.backup('steam:recovery', roots);
+  await fs.writeFile(file, 'newer-before-restore');
+  const safetyFingerprint = digest(JSON.stringify(await engine.scan(roots)));
+  const root = roots[0];
+  const plan = { ...root, stage: `${root.path}.hydra-restore-11111111-1111-4111-8111-111111111111`, rollback: `${root.path}.hydra-previous-22222222-2222-4222-8222-222222222222`, moved: false, installed: false, present: true, originalPresent: true };
+  await fs.rename(root.path, plan.rollback);
+  await fs.mkdir(root.path);
+  await fs.writeFile(file, 'level-1');
+  const journal = engine.journal('steam:recovery');
+  await fs.mkdir(engine.stateDirectory, { recursive: true });
+  const record = { schema: 2, gameId: 'steam:recovery', committed, safety: 'safety-id', safetyFingerprint, targetFingerprint: target.fingerprint, plans: [plan] };
+  await fs.writeFile(journal, JSON.stringify(record));
+  return { ...value, plan, journal, record };
+}
+
+test('interrupted restore blocks backup and rollback recovers even when rename flags were not persisted', async t => {
+  const { engine, roots, file, journal, plan } = await interruptedFixture(t);
+  await assert.rejects(engine.backup('steam:recovery', roots), /sebelumnya terputus/);
+  await engine.recover('steam:recovery', roots);
+  assert.equal(await fs.readFile(file, 'utf8'), 'newer-before-restore');
+  await assert.rejects(fs.access(journal));
+  await assert.rejects(fs.access(plan.rollback));
+  const siblings = await fs.readdir(path.dirname(roots[0].path));
+  const preserved = siblings.find(name => name.startsWith('save.hydra-interrupted-'));
+  assert.ok(preserved);
+  assert.equal(await fs.readFile(path.join(path.dirname(roots[0].path), preserved, 'progress.sav'), 'utf8'), 'level-1');
+  await engine.backup('steam:recovery', roots);
+});
+
+test('committed interrupted restore keeps restored progress and preserves leftover rollback files', async t => {
+  const { engine, roots, file, journal, plan } = await interruptedFixture(t, true);
+  await engine.recover('steam:recovery', roots);
+  assert.equal(await fs.readFile(file, 'utf8'), 'level-1');
+  assert.equal(await fs.readFile(path.join(plan.rollback, 'progress.sav'), 'utf8'), 'newer-before-restore');
+  await assert.rejects(fs.access(journal));
+});
+
+test('recovery rejects unsafe journals and legacy journals without changing live save', async t => {
+  const { engine, roots, file, journal, record, directory } = await interruptedFixture(t);
+  record.plans[0].rollback = path.join(directory, 'outside');
+  await fs.writeFile(journal, JSON.stringify(record));
+  await assert.rejects(engine.recover('steam:recovery', roots), /tidak aman/);
+  assert.equal(await fs.readFile(file, 'utf8'), 'level-1');
+  await fs.writeFile(journal, '{}');
+  await assert.rejects(engine.recover('steam:recovery', roots), /manual/);
+  assert.equal((await engine.recovery('steam:recovery')).automatic, false);
+});
+
+test('recovery interruption can be retried after live content was preserved but rollback not yet moved', async t => {
+  const { engine, roots, journal, record, file } = await interruptedFixture(t);
+  record.plans[0].preserved = `${roots[0].path}.hydra-interrupted-33333333-3333-4333-8333-333333333333`;
+  await fs.writeFile(journal, JSON.stringify(record));
+  await fs.rename(roots[0].path, record.plans[0].preserved);
+  await engine.recover('steam:recovery', roots);
+  assert.equal(await fs.readFile(file, 'utf8'), 'newer-before-restore');
+  assert.equal(await fs.readFile(path.join(record.plans[0].preserved, 'progress.sav'), 'utf8'), 'level-1');
+});
+
+test('low space prevents backup before retention and exposes a storage warning', async t => {
+  const { engine, roots, file } = await fixture(t, { retention: 1 });
+  const old = await engine.backup('steam:space', roots);
+  await fs.writeFile(file, 'newer-save');
+  engine.availableSpace = async () => ({ availableBytes: 1024, totalBytes: 100000 });
+  assert.equal((await engine.storage()).warning, true);
+  await assert.rejects(engine.backup('steam:space', roots), /Ruang penyimpanan tidak cukup/);
+  assert.equal((await engine.versions('steam:space'))[0].id, old.id);
+  assert.equal(await fs.readFile(file, 'utf8'), 'newer-save');
+});
+
+test('unverifiable committed recovery keeps its journal and live files for manual handling', async t => {
+  const { engine, roots, file, journal, plan } = await interruptedFixture(t, true);
+  await fs.writeFile(file, 'unrecognized later progress');
+  await assert.rejects(engine.recover('steam:recovery', roots), /belum sesuai/);
+  await fs.access(journal);
+  await fs.access(plan.rollback);
+  assert.equal(await fs.readFile(file, 'utf8'), 'unrecognized later progress');
+});
+
+test('recovery refuses to change saves when game status cannot be confirmed stopped', async t => {
+  const { engine, roots, file, journal } = await interruptedFixture(t);
+  engine.assertStopped = async () => { throw new Error('Game masih berjalan'); };
+  await assert.rejects(engine.recover('steam:recovery', roots), /masih berjalan/);
+  await fs.access(journal);
+  assert.equal(await fs.readFile(file, 'utf8'), 'level-1');
+});

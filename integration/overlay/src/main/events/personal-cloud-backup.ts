@@ -3,7 +3,7 @@ import { dialog, shell } from "electron";
 import { registerEvent } from "./register-event";
 import { assertTrustedEpicSender } from "./epic/assert-trusted-sender";
 import { WindowManager } from "../services/window-manager";
-import { getPersonalBackup, restorePersonalBackup } from "../services/personal-cloud-backup";
+import { getPersonalBackup, restorePersonalBackup, recoverPersonalBackup } from "../services/personal-cloud-backup";
 
 const string = (value: unknown) => {
   if (typeof value !== "string" || !value || value.length > 1000) throw new Error("Permintaan backup tidak valid.");
@@ -38,10 +38,23 @@ registerEvent("personalBackup", async (event, request: unknown) => {
       } else throw new Error("Lokasi bukan file save atau folder yang dapat dibuka.");
       return snapshot;
     }
+    case "open-recovery": {
+      const recovery = (await controller.snapshot(string(gameId), true)).recovery;
+      if (!recovery) throw new Error("Tidak ada catatan pemulihan terputus.");
+      shell.showItemInFolder(recovery.journal);
+      return controller.snapshot(gameId, true);
+    }
+    case "recover": {
+      const recovery = (await controller.snapshot(string(gameId), true)).recovery;
+      if (!recovery?.automatic) throw new Error("Catatan pemulihan memerlukan pemeriksaan manual. Buka folder catatan dan jangan hapus file pengaman.");
+      const confirmation = await dialog.showMessageBox(parent, { type: "warning", title: "Tangani pemulihan terputus?", message: recovery.committed ? "Periksa dan selesaikan pemulihan sebelumnya?" : "Kembalikan kondisi sebelum pemulihan yang terputus?", detail: "Tutup game terlebih dahulu. File yang perlu dipindahkan tetap disimpan sebagai file pengaman di samping lokasi save. Jika kondisi tidak dapat dipastikan, operasi dihentikan untuk pemeriksaan manual.", buttons: ["Batal", "Lanjutkan"], defaultId: 0, cancelId: 0, noLink: true });
+      if (confirmation.response === 1) await recoverPersonalBackup(string(gameId));
+      break;
+    }
     case "snapshot": return controller.snapshot(gameId, input.lightweight === true);
     case "configure": {
       if (typeof input.enabled !== "boolean" || !Number.isInteger(input.retention)) throw new Error("Pengaturan tidak valid.");
-      await controller.configure({ enabled: input.enabled, retention: input.retention as number });
+      await controller.configure({ enabled: input.enabled, retention: input.retention as number, setupCompleted: input.setupCompleted as boolean | undefined });
       break;
     }
     case "destination": {

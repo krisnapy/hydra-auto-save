@@ -11,6 +11,7 @@ const exists = async file => fs.lstat(file).then(() => true, e => {
 });
 const json = async file => JSON.parse(await fs.readFile(file, 'utf8'));
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+const unstable = message => Object.assign(new Error(message), { code: 'SAVE_UNSTABLE' });
 const safeId = value => typeof value === 'string' && /^[a-zA-Z0-9_-]{1,100}$/.test(value);
 const contained = (parent, child) => {
   const relative = path.relative(parent, child);
@@ -134,7 +135,8 @@ export class BackupEngine {
       if (present) {
         const info = await fs.lstat(root.path);
         if ((root.kind === 'file' && !info.isFile()) || (root.kind === 'directory' && !info.isDirectory())) throw new Error('Jenis lokasi save berubah.');
-        await walk(root, root.path, '');
+        try { await walk(root, root.path, ''); }
+        catch (error) { if (['ENOENT', 'EBUSY'].includes(error.code)) throw unstable('Save masih berubah atau sedang ditulis; tunggu hingga stabil.'); throw error; }
       }
     }
     return { roots: states, files };
@@ -214,11 +216,97 @@ export class BackupEngine {
     return versions.sort((a, b) => (b.order ?? 0) - (a.order ?? 0) || b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id));
   }
 
+  journal(gameId) { return path.join(this.stateDirectory, `${digest(gameId)}-restore.json`); }
+  async assertNoRecovery(gameId) {
+    if (await exists(this.journal(gameId))) throw new Error('Pemulihan sebelumnya terputus. Selesaikan penanganan pemulihan sebelum membuat backup baru.');
+  }
+  async recovery(gameId) {
+    const journal = this.journal(gameId);
+    await safePath(journal);
+    if (!await exists(journal)) return null;
+    try {
+      if ((await fs.stat(journal)).size > 1024 * 1024) throw new Error('Catatan terlalu besar.');
+      const value = await json(journal);
+      return { journal, automatic: value.schema === 2 && value.gameId === gameId, committed: value.committed === true };
+    } catch { return { journal, automatic: false, committed: false }; }
+  }
+  async availableSpace(directory) {
+    await safePath(directory);
+    let current = directory;
+    while (!await exists(current)) {
+      const parent = path.dirname(current);
+      if (parent === current) throw new Error('Volume penyimpanan tidak tersedia.');
+      current = parent;
+    }
+    const info = await fs.statfs(current, { bigint: true });
+    return { availableBytes: Number(info.bavail * info.bsize), totalBytes: Number(info.blocks * info.bsize) };
+  }
+  async storage() {
+    if (this.storageCheckedAt && Date.now() - this.storageCheckedAt < 30000) return this.storageResult;
+    try {
+      const space = await this.availableSpace(this.destination);
+      this.storageResult = { ...space, warning: space.availableBytes < 1024 ** 3, detail: space.availableBytes < 1024 ** 3 ? 'Ruang folder backup kurang dari 1 GB. Kosongkan ruang agar backup dapat terus berjalan.' : '' };
+    } catch { this.storageResult = { warning: true, detail: 'Ruang folder backup belum dapat diperiksa. Periksa ketersediaan drive atau folder cloud.' }; }
+    this.storageCheckedAt = Date.now();
+    return this.storageResult;
+  }
+  async requireSpace(directory, bytes) {
+    let space;
+    try { space = await this.availableSpace(directory); }
+    catch { return; } // Unsupported statfs is advisory; actual copy errors still fail safely.
+    if (space.availableBytes < bytes + 16 * 1024 ** 2) throw Object.assign(new Error('Ruang penyimpanan tidak cukup untuk operasi ini. Kosongkan ruang; backup lama dipertahankan.'), { code: 'ENOSPC' });
+  }
+  recover(gameId, roots) {
+    return this.exclusive(gameId, async () => {
+      await this.validate(roots);
+      await this.assertStopped(gameId);
+      const summary = await this.recovery(gameId);
+      if (!summary?.automatic) throw new Error('Catatan pemulihan lama atau rusak memerlukan pemeriksaan manual. Buka folder catatan pemulihan dan jangan hapus file pengaman.');
+      const journal = this.journal(gameId);
+      const value = await json(journal);
+      if (value.schema !== 2 || value.gameId !== gameId || typeof value.committed !== 'boolean' || !Array.isArray(value.plans) || value.plans.length !== roots.length || !/^[a-f0-9]{64}$/.test(value.safetyFingerprint) || !/^[a-f0-9]{64}$/.test(value.targetFingerprint)) throw new Error('Catatan pemulihan tidak valid.');
+      const ids = new Set();
+      for (const plan of value.plans) {
+        const root = roots.find(root => root.id === plan.id);
+        if (!root || ids.has(plan.id) || plan.path !== root.path || plan.kind !== root.kind || typeof plan.originalPresent !== 'boolean') throw new Error('Lokasi pemulihan berbeda dari pengaturan. Pemeriksaan manual diperlukan.');
+        ids.add(plan.id);
+        for (const [key, suffix] of [['stage', 'restore'], ['rollback', 'previous'], ['preserved', 'interrupted']]) {
+          if (key === 'preserved' && !plan[key]) continue;
+          const prefix = `${root.path}.hydra-${suffix}-`;
+          if (typeof plan[key] !== 'string' || !plan[key].startsWith(prefix) || !/^[a-f0-9-]{36}$/.test(plan[key].slice(prefix.length))) throw new Error('Path catatan pemulihan tidak aman.');
+          await safePath(plan[key]);
+        }
+      }
+      if (!value.committed) {
+        for (const plan of [...value.plans].reverse()) {
+          await this.assertStopped(gameId);
+          await safePath(plan.path);
+          const rollback = await exists(plan.rollback);
+          if ((rollback || !plan.originalPresent) && await exists(plan.path)) {
+            plan.preserved ??= `${plan.path}.hydra-interrupted-${randomUUID()}`;
+            await safePath(plan.preserved);
+            if (await exists(plan.preserved)) throw new Error('File pengaman penanganan sudah ada. Pemeriksaan manual diperlukan.');
+            await atomicJson(journal, value);
+            await fs.rename(plan.path, plan.preserved);
+          }
+          if (rollback) await fs.rename(plan.rollback, plan.path);
+        }
+      }
+      // Only clear the block after content matches the recorded complete state.
+      await this.assertStopped(gameId);
+      const current = digest(JSON.stringify(await this.scan(roots)));
+      if (current !== (value.committed ? value.targetFingerprint : value.safetyFingerprint)) throw new Error('Isi save belum sesuai kondisi pemulihan. Catatan dan file pengaman dipertahankan untuk pemeriksaan manual.');
+      await fs.rm(journal);
+      this.onStatus(gameId, 'restored', value.committed ? 'Pemulihan sebelumnya sudah lengkap; pemeriksaan selesai.' : 'Kondisi sebelum pemulihan dikembalikan. File yang dipindahkan disimpan di samping lokasi save dengan nama hydra-interrupted.');
+    });
+  }
+
   backup(gameId, roots, options = {}) {
     return this.exclusive(gameId, () => this.capture(gameId, roots, options));
   }
 
   async capture(gameId, roots, { reason = 'manual', safety = false } = {}) {
+    await this.assertNoRecovery(gameId);
     this.onStatus(gameId, 'preparing');
     const report = (phase, completed, total) => this.onProgress(gameId, safety ? `safety-${phase}` : phase, completed, total);
     let temporary;
@@ -228,7 +316,7 @@ export class BackupEngine {
       if (!safety && !first.roots.some(root => root.present)) throw new Error('Lokasi save belum tersedia.');
       report('stabilizing');
       await delay(this.stableMs);
-      if (!same(first, await this.scan(roots))) throw new Error('Save masih berubah; backup akan dicoba lagi.');
+      if (!same(first, await this.scan(roots))) throw unstable('Save masih berubah atau sedang ditulis; backup akan dicoba lagi setelah stabil.');
       const fingerprint = digest(JSON.stringify(first));
       report('checking-history');
       const versions = await this.versions(gameId);
@@ -239,6 +327,7 @@ export class BackupEngine {
       const id = `${Date.now()}-${randomUUID()}`;
       const directory = this.directory(gameId);
       await safePath(directory);
+      await this.requireSpace(this.destination, first.files.reduce((sum, file) => sum + file.bytes, 0));
       temporary = path.join(directory, `_pending-${id}`);
       await fs.mkdir(path.join(temporary, 'data'), { recursive: true });
       let copied = 0;
@@ -248,11 +337,11 @@ export class BackupEngine {
         await safePath(source);
         const target = path.join(temporary, 'data', entry.hash);
         if (!await exists(target)) await fs.copyFile(source, target);
-        if (await hashFile(target) !== entry.hash) throw new Error('Sumber berubah selama penyalinan.');
+        if (await hashFile(target) !== entry.hash) throw unstable('Sumber berubah selama penyalinan; backup akan dicoba lagi setelah stabil.');
         report('copying', ++copied, first.files.length);
       }
       report('verifying');
-      if (!same(first, await this.scan(roots))) throw new Error('Sumber berubah selama penyalinan.');
+      if (!same(first, await this.scan(roots))) throw unstable('Sumber berubah selama penyalinan; backup akan dicoba lagi setelah stabil.');
       const order = Math.max(0, ...versions.map(version => version.order ?? 0)) + 1;
       const manifest = { schema: 1, id, gameId, deviceId: this.deviceId, order, createdAt: new Date().toISOString(), reason, safety, fingerprint, ...first };
       report('publishing');
@@ -272,7 +361,8 @@ export class BackupEngine {
       this.onStatus(gameId, 'complete');
       return manifest;
     } catch (error) {
-      this.onStatus(gameId, 'failed', error.message);
+      if (error.code === 'EBUSY') error = unstable('Save sedang digunakan; backup akan dicoba lagi setelah stabil.');
+      this.onStatus(gameId, error.code === 'SAVE_UNSTABLE' ? 'waiting' : 'failed', error.code === 'ENOSPC' ? 'Ruang penyimpanan tidak cukup. Backup lama tetap dipertahankan.' : error.message);
       throw error;
     } finally {
       if (temporary) await fs.rm(temporary, { recursive: true, force: true });
@@ -301,13 +391,15 @@ export class BackupEngine {
       }
       // Fail before writing live data if the safety backup cannot complete.
       const safety = await this.capture(gameId, roots, { reason: 'before-restore', safety: true });
-      const plans = roots.map(root => ({ ...root, stage: `${root.path}.hydra-restore-${randomUUID()}`, rollback: `${root.path}.hydra-previous-${randomUUID()}`, moved: false, installed: false, present: recorded.get(root.id)?.present ?? false }));
+      const plans = roots.map(root => ({ ...root, stage: `${root.path}.hydra-restore-${randomUUID()}`, rollback: `${root.path}.hydra-previous-${randomUUID()}`, moved: false, installed: false, present: recorded.get(root.id)?.present ?? false, originalPresent: safety.roots.find(item => item.id === root.id)?.present ?? false }));
+      const writeJournal = (committed = false) => atomicJson(journal, { schema: 2, gameId, committed, safety: safety.id, safetyFingerprint: safety.fingerprint, targetFingerprint: manifest.fingerprint, plans });
       let journalWritten = false, committed = false;
       let staged = 0;
       this.onProgress(gameId, 'restore-staging', 0, manifest.files.length);
       try {
         for (const plan of plans) {
           await safePath(plan.path);
+          await this.requireSpace(path.dirname(plan.path), manifest.files.filter(file => file.rootId === plan.id).reduce((sum, file) => sum + file.bytes, 0));
           await fs.mkdir(path.dirname(plan.stage), { recursive: true });
           if (plan.present && plan.kind === 'directory') await fs.mkdir(plan.stage);
           for (const entry of manifest.files.filter(file => file.rootId === plan.id)) {
@@ -325,7 +417,7 @@ export class BackupEngine {
         this.onProgress(gameId, 'restore-checking-source');
         const before = await this.scan(roots);
         if (digest(JSON.stringify(before)) !== safety.fingerprint) throw new Error('Save berubah setelah backup pengaman. Pemulihan dibatalkan.');
-        await atomicJson(journal, { safety: safety.id, plans });
+        await writeJournal();
         journalWritten = true;
         let replaced = 0;
         this.onProgress(gameId, 'restore-replacing', 0, plans.length);
@@ -340,11 +432,11 @@ export class BackupEngine {
             await fs.rename(plan.stage, plan.path);
             plan.installed = true;
           }
-          await atomicJson(journal, { safety: safety.id, plans });
+          await writeJournal();
           this.onProgress(gameId, 'restore-replacing', ++replaced, plans.length);
         }
         committed = true;
-        await atomicJson(journal, { committed: true, safety: safety.id, plans });
+        await writeJournal(true);
         this.onProgress(gameId, 'restore-cleanup');
         for (const plan of plans) await fs.rm(plan.rollback, { recursive: true, force: true });
         await fs.rm(journal);

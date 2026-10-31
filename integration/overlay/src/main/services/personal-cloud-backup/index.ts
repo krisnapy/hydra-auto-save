@@ -78,3 +78,6 @@ export const onPersonalBackupGameClosed = (game: Game) => {
 
 export const restorePersonalBackup = (gameId: string, versionId: string) =>
   withRestoreGate(gameId, () => runWithHydraSaveGuard(async () => (await getPersonalBackup()).restore(gameId, versionId, true)));
+
+export const recoverPersonalBackup = (gameId: string) =>
+  withRestoreGate(gameId, () => runWithHydraSaveGuard(async () => (await getPersonalBackup()).recover(gameId)));

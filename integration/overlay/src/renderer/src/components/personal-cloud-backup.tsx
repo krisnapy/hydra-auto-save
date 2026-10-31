@@ -14,7 +14,7 @@ const labels: Record<string, string> = {
 };
 
 const operationLabels: Record<string, string> = {
-  automatic: "Backup otomatis", backup: "Backup", restore: "Pemulihan", settings: "Pengaturan", manual: "Pengaturan lokasi save", detect: "Deteksi lokasi save", manifest: "Pembaruan database",
+  recover: "Penanganan pemulihan", automatic: "Backup otomatis", backup: "Backup", restore: "Pemulihan", settings: "Pengaturan", manual: "Pengaturan lokasi save", detect: "Deteksi lokasi save", manifest: "Pembaruan database",
 };
 const phaseLabels: Record<string, string> = {
   queued: "Menunggu giliran; operasi yang berjalan akan diselesaikan dahulu", preparing: "Menyiapkan operasi", detecting: "Mencari lokasi save", manifest: "Mengunduh database lokasi save",
@@ -27,6 +27,9 @@ const phaseLabel = (phase: string) => phase.startsWith("safety-") ? `Backup peng
 export function PersonalCloudBackup({ gameId }: { gameId?: string }) {
   const [snapshot, setSnapshot] = useState<BackupSnapshot>();
   const [busy, setBusy] = useState(false);
+  const [guideOpen, setGuideOpen] = useState(false);
+  const [guideDismissed, setGuideDismissed] = useState(false);
+  const [selectedGame, setSelectedGame] = useState("");
   const [opening, setOpening] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -92,12 +95,14 @@ export function PersonalCloudBackup({ gameId }: { gameId?: string }) {
     } catch (failure) { if (mounted.current) setError(String(failure)); }
     finally { if (mounted.current) setBusy(false); }
   };
-  const openLocation = async (name: "open-save" | "open-backup", rootId?: string) => {
+  const openLocation = async (name: "open-save" | "open-backup" | "open-recovery", rootId?: string, selectedId = gameId) => {
     setOpening(true); setError("");
-    try { await window.personalBackup.invoke({ action: name, gameId, rootId }); }
+    try { await window.personalBackup.invoke({ action: name, gameId: selectedId, rootId }); }
     catch (failure) { if (mounted.current) setError(String(failure)); }
     finally { if (mounted.current) setOpening(false); }
   };
+  const guideGame = snapshot?.setup.games.find(game => game.id === selectedGame) ?? snapshot?.setup.games[0];
+  const showGuide = guideOpen || (!snapshot?.setup.completed && !guideDismissed);
   return <section className="personal-backup" aria-label="Personal Cloud Backup">
     <header><h3>Personal Cloud Backup</h3><span>Windows · Cloud pribadi</span></header>
     <p>Backup disimpan ke folder sinkronisasi milik Anda. Aplikasi cloud menangani unggahan.</p>
@@ -105,6 +110,13 @@ export function PersonalCloudBackup({ gameId }: { gameId?: string }) {
     {message && <p role="status">{message}</p>}
     {busy && <p role="status">Permintaan sedang diproses. Jika ada operasi lain, permintaan menunggu giliran.</p>}
     {snapshot && <>
+      {snapshot.storage?.warning && <p role="alert" className="personal-backup__warning">{snapshot.storage.detail}{typeof snapshot.storage.availableBytes === "number" && ` Tersisa ${(snapshot.storage.availableBytes / 1024 ** 3).toFixed(2)} GB.`}</p>}
+      {(gameId ? snapshot.recovery ? [{ id: gameId, title: "Game ini", recovery: snapshot.recovery }] : [] : snapshot.interrupted).map(item => <div key={item.id} role="alert" className="personal-backup__warning">
+        <strong>Pemulihan terputus · {item.title}</strong>
+        <p>Backup dan pemulihan baru untuk game ini diblokir. Tutup game sebelum melanjutkan.</p>
+        <p>{item.recovery?.automatic ? item.recovery.committed ? "Aplikasi akan memeriksa hasil pemulihan sebelumnya." : "Penanganan akan mencoba mengembalikan kondisi sebelumnya, sambil mempertahankan file yang dipindahkan." : "Catatan lama atau rusak memerlukan pemeriksaan manual. Jangan hapus catatan atau file hydra-previous/hydra-interrupted. Periksa salinan save dan backup pengaman sebelum mengubahnya."}</p>
+        <div className="personal-backup__actions"><button disabled={opening} onClick={() => void openLocation("open-recovery", undefined, item.id)}>Buka catatan pemulihan</button>{item.recovery?.automatic && <button disabled={busy} onClick={() => void action("recover", { gameId: item.id })}>Tangani pemulihan</button>}</div>
+      </div>)}
       {snapshot.operations?.length > 0 ? <div className="personal-backup__progress" aria-live="polite">
         {snapshot.operations.map(operation => <div key={operation.id}>
           <p><strong>{operationLabels[operation.kind] ?? operation.kind}{operation.title && ` · ${operation.title}`}</strong></p>
@@ -120,6 +132,20 @@ export function PersonalCloudBackup({ gameId }: { gameId?: string }) {
         {snapshot.lastOperation.detail && ` — ${snapshot.lastOperation.detail}`}
       </p>}
       {!gameId ? <>
+        {showGuide ? <div className="personal-backup__guide">
+          <h4>Mulai backup pribadi</h4>
+          <p>1. {snapshot.destination ? "✓ Folder tujuan dipilih" : "Pilih folder tujuan backup"}</p>
+          <button disabled={busy} onClick={() => void action("destination")}>Pilih folder backup</button>
+          <p>2. Pilih game dan tentukan lokasi save</p>
+          {snapshot.setup.games.length ? <>
+            <select aria-label="Game untuk pengaturan awal" value={guideGame?.id ?? ""} disabled={busy} onChange={event => setSelectedGame(event.target.value)}>{snapshot.setup.games.map(game => <option key={game.id} value={game.id}>{game.title}{game.configured ? " · lokasi siap" : ""}</option>)}</select>
+            <div className="personal-backup__actions"><button disabled={busy || !snapshot.ludusavi} onClick={() => void action("detect", { gameId: guideGame?.id })}>Deteksi save game</button><button disabled={busy} onClick={() => void action("manual", { gameId: guideGame?.id, kind: "directory" })}>Pilih folder save</button><button disabled={busy} onClick={() => void action("manual", { gameId: guideGame?.id, kind: "file" })}>Pilih file save</button></div>
+          </> : <p>Tambahkan game PC ke pustaka Hydra dan tentukan executable game terlebih dahulu.</p>}
+          <p>3. {snapshot.setup.firstBackupAt ? "✓ Backup percobaan berhasil" : "Buat backup percobaan"}</p>
+          <button disabled={busy || !snapshot.destination || !guideGame?.configured} onClick={() => void action("backup", { gameId: guideGame?.id })}>Buat backup percobaan</button>
+          <p>4. Aktifkan Auto Backup untuk memantau perubahan selama aplikasi berjalan.</p>
+          <div className="personal-backup__actions"><button disabled={busy || !snapshot.setup.firstBackupAt || !snapshot.destination} onClick={() => void action("configure", { enabled: true, retention: snapshot.retention, setupCompleted: true }).then(() => setGuideOpen(false))}>Aktifkan dan selesaikan</button><button disabled={busy} onClick={() => { setGuideOpen(false); setGuideDismissed(true); }}>Nanti</button></div>
+        </div> : <button disabled={busy} onClick={() => setGuideOpen(true)}>Buka panduan pengaturan awal</button>}
         <label className="personal-backup__toggle"><input type="checkbox" checked={snapshot.enabled} disabled={busy} onChange={event => void action("configure", { enabled: event.target.checked, retention: snapshot.retention })} /> Auto Backup</label>
         <p>Aktif selama Hydra berjalan. Game Steam dan game PC kustom dengan executable yang diketahui didukung pada tahap awal.</p>
         <div className="personal-backup__row"><div><strong>Folder backup</strong><p>{snapshot.destination || "Belum dipilih"}</p></div><div className="personal-backup__actions"><button disabled={opening || !snapshot.destination} onClick={() => void openLocation("open-backup")}>Buka lokasi backup</button><button disabled={busy} onClick={() => void action("destination")}>Pilih folder</button></div></div>
@@ -130,7 +156,7 @@ export function PersonalCloudBackup({ gameId }: { gameId?: string }) {
       </> : <>
         <p role="status"><strong>{!snapshot.enabled ? "Auto Backup nonaktif" : labels[snapshot.status.status] ?? snapshot.status.status}</strong>{snapshot.status.detail && ` — ${snapshot.status.detail}`}</p>
         <div className="personal-backup__actions">
-          <button disabled={busy || !snapshot.destination || !snapshot.roots.length} onClick={() => void action("backup")}>Backup sekarang</button>
+          <button disabled={busy || Boolean(snapshot.recovery) || !snapshot.destination || !snapshot.roots.length} onClick={() => void action("backup")}>Backup sekarang</button>
           <button disabled={busy || !snapshot.ludusavi} onClick={() => void action("detect")}>Deteksi lokasi save</button>
           <button disabled={busy} onClick={() => void action("manual", { kind: "directory" })}>Pilih folder save</button>
           <button disabled={busy} onClick={() => void action("manual", { kind: "file" })}>Pilih file save</button>
@@ -142,7 +168,7 @@ export function PersonalCloudBackup({ gameId }: { gameId?: string }) {
         <div className="personal-backup__row"><div><strong>Lokasi backup game ini</strong><p>{snapshot.backupDirectory || "Folder backup belum dipilih"}</p></div><button disabled={opening || !snapshot.backupDirectory} onClick={() => void openLocation("open-backup")}>Buka lokasi backup</button></div>
         <h4>Riwayat perangkat ini</h4>
         {snapshot.versions.length === 0 && <p>Belum ada backup lengkap yang dapat dipulihkan.</p>}
-        <ul className="personal-backup__versions">{snapshot.versions.map(version => <li key={version.id}><div><strong>{new Date(version.createdAt).toLocaleString()}</strong><p>{version.files} file{version.safety ? " · Backup pengaman" : ""}</p></div><button disabled={busy} onClick={() => void action("restore", { versionId: version.id })}>Pulihkan</button></li>)}</ul>
+        <ul className="personal-backup__versions">{snapshot.versions.map(version => <li key={version.id}><div><strong>{new Date(version.createdAt).toLocaleString()}</strong><p>{version.files} file{version.safety ? " · Backup pengaman" : ""}</p></div><button disabled={busy || Boolean(snapshot.recovery)} onClick={() => void action("restore", { versionId: version.id })}>Pulihkan</button></li>)}</ul>
       </>}
       <h4>Aktivitas terbaru</h4>
       {snapshot.activity.length === 0 && <p>Belum ada aktivitas backup.</p>}
