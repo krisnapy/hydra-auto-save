@@ -1,10 +1,18 @@
 import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
 import path from 'node:path';
-const run = promisify(execFile);
+
+export const runWithoutInput = (executable, args, options) => new Promise((resolve, reject) => {
+  const child = execFile(executable, args, options, (error, stdout, stderr) => {
+    if (error) reject(Object.assign(error, { stdout, stderr }));
+    else resolve({ stdout, stderr });
+  });
+  // `find --steam-id` reads positional names from stdin until EOF, even with an ID.
+  child.stdin?.on('error', () => {});
+  child.stdin?.end();
+});
 
 export class Ludusavi {
-  constructor(executable, configDirectory, runner = run) {
+  constructor(executable, configDirectory, runner = runWithoutInput) {
     if (!path.isAbsolute(executable)) throw new Error('Pilih lokasi absolut ludusavi.exe.');
     this.executable = executable;
     this.configDirectory = configDirectory;
@@ -12,9 +20,26 @@ export class Ludusavi {
   }
   async invoke(args) {
     // Argument array, no shell; isolated config; never invokes backup or restore.
-    const { stdout } = await this.runner(this.executable, ['--config', this.configDirectory, '--no-manifest-update', ...args], { windowsHide: true, timeout: 90000, maxBuffer: 16 * 1024 * 1024 });
-    const output = JSON.parse(stdout);
-    if (!output || typeof output.games !== 'object' || !output.games || output.errors?.someGamesFailed || output.errors?.unknownGames?.length) throw new Error('Ludusavi gagal mengenali atau memindai game.');
+    let stdout;
+    let failure;
+    try {
+      ({ stdout } = await this.runner(this.executable, ['--config', this.configDirectory, '--no-manifest-update', ...args], { windowsHide: true, timeout: 90000, maxBuffer: 16 * 1024 * 1024 }));
+    } catch (error) {
+      // Ludusavi returns useful JSON with a nonzero exit code for unknown games.
+      stdout = error.stdout;
+      failure = error;
+    }
+    let output;
+    try { output = JSON.parse(stdout); } catch { /* Explain process failures below. */ }
+    if (output?.errors?.unknownGames?.length) throw new Error('Perlu pengaturan: game atau Steam ID belum dikenali oleh database Ludusavi. Perbarui database lokasi save atau pilih lokasi save manual.');
+    if (failure) {
+      if (failure.killed) throw new Error('Deteksi Ludusavi melewati batas waktu. Coba lagi atau pilih lokasi save manual.');
+      if (failure.code === 'ENOENT') throw new Error('Ludusavi tidak ditemukan. Pilih kembali ludusavi.exe di pengaturan.');
+      if (output?.errors?.someGamesFailed) throw new Error('Ludusavi gagal memindai sebagian save. Periksa akses file atau pilih lokasi save manual.');
+      const detail = String(failure.stderr || '').trim().slice(0, 1200);
+      throw new Error(`Ludusavi gagal dijalankan${detail ? `: ${detail}` : '. Periksa lokasi ludusavi.exe dan izin aksesnya.'}`);
+    }
+    if (!output || typeof output.games !== 'object' || !output.games || output.errors?.someGamesFailed) throw new Error('Ludusavi gagal mengenali atau memindai game.');
     return output;
   }
   async updateManifest() {

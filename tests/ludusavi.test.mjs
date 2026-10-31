@@ -38,3 +38,24 @@ test('judul diawali tanda minus tetap berupa argumen nama', async () => {
   });
   await assert.rejects(detector.discover({ title: '--evil-title' }), /secara pasti/);
 });
+
+test('proses pencarian yang membaca stdin mendapat EOF dan tidak macet', async () => {
+  const { runWithoutInput } = await import('../module/ludusavi.mjs');
+  const result = await runWithoutInput(process.execPath, ['-e', "process.stdin.resume(); process.stdin.on('end', () => process.stdout.write('EOF'))"], { timeout: 3000 });
+  assert.equal(result.stdout, 'EOF');
+});
+
+test('exit nonzero dengan unknownGames menjadi petunjuk pengaturan, bukan perintah mentah', async () => {
+  const detector = new Ludusavi(path.resolve('ludusavi.exe'), '/config', async () => {
+    throw Object.assign(new Error('Command failed: ludusavi find'), { code: 1, stdout: JSON.stringify({ errors: { unknownGames: ['1245629'] }, games: {} }) });
+  });
+  await assert.rejects(detector.discover({ shop: 'steam', objectId: '1245629' }), /Steam ID belum dikenali/);
+});
+
+test('timeout dan kegagalan CLI punya alasan yang dapat ditindaklanjuti', async () => {
+  let failure = { killed: true };
+  const detector = new Ludusavi(path.resolve('ludusavi.exe'), '/config', async () => { throw Object.assign(new Error('Command failed'), failure); });
+  await assert.rejects(detector.discover({ title: 'Game' }), /batas waktu/);
+  failure = { code: 2, stderr: 'unexpected argument --flag' };
+  await assert.rejects(detector.discover({ title: 'Game' }), /unexpected argument --flag/);
+});

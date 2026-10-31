@@ -67,6 +67,8 @@ jobs:
       - name: Install Hydra dependencies and bundled tools
         working-directory: hydra
         run: yarn install --frozen-lockfile --network-timeout 300000
+      - name: Reproduce and verify Ludusavi Steam ID detection
+        run: node backup/scripts/check-ludusavi.mjs hydra/ludusavi/ludusavi.exe --live-manifest
       - name: Typecheck integrated Hydra
         working-directory: hydra
         run: yarn typecheck
