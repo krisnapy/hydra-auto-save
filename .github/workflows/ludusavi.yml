@@ -1,0 +1,32 @@
+name: Ludusavi detection regression
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/ludusavi.yml'
+      - 'scripts/check-ludusavi.mjs'
+      - 'module/ludusavi.mjs'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  detect:
+    runs-on: windows-2022
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.21.0
+      - name: Get official Ludusavi version bundled with Hydra 4.3.0
+        shell: pwsh
+        run: |
+          Invoke-WebRequest https://github.com/mtkennerly/ludusavi/releases/download/v0.29.0/ludusavi-v0.29.0-win64.zip -OutFile ludusavi.zip
+          Expand-Archive ludusavi.zip -DestinationPath ludusavi
+      - name: Reproduce original timeout, test fix, and check reported IDs
+        run: node scripts/check-ludusavi.mjs ludusavi/ludusavi.exe --live-manifest
