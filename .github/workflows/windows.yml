@@ -3,6 +3,11 @@ name: Windows installer
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - '.github/workflows/split-windows.yml'
+      - 'scripts/split-windows.mjs'
+      - 'README.md'
+      - 'docs/**'
   workflow_dispatch:
 
 permissions:

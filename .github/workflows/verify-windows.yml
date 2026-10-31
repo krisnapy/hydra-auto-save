@@ -39,10 +39,26 @@ jobs:
           if (!$portable) { throw 'Portable application is missing' }
           node scripts/smoke-windows.mjs $portable package
           if ($LASTEXITCODE -ne 0) { throw 'Packaged application startup failed' }
+      - name: Separate downloads
+        run: node scripts/split-windows.mjs package downloads
       - uses: actions/upload-artifact@v4
         with:
-          name: Hydra-Personal-Backup-Windows-Verified
-          path: package/
+          name: Hydra-Personal-Backup-Installer-Windows-x64
+          path: downloads/setup/
+          retention-days: 30
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Hydra-Personal-Backup-Portable-Windows-x64
+          path: downloads/portable/
+          retention-days: 30
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Windows-startup-verification
+          path: |
+            package/startup.log
+            package/*.png
           retention-days: 30
           compression-level: 0
       - name: Startup diagnostics
