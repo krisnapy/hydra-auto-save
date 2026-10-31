@@ -4,6 +4,8 @@ on:
   push:
     branches: [main]
     paths-ignore:
+      - 'tests/visual/**'
+      - '.github/workflows/visual-tests.yml'
       - '.github/workflows/split-windows.yml'
       - '.github/workflows/ludusavi.yml'
       - '.github/workflows/verify-windows.yml'
