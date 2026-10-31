@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths-ignore:
       - '.github/workflows/split-windows.yml'
+      - '.github/workflows/ludusavi.yml'
       - 'scripts/split-windows.mjs'
       - 'README.md'
       - 'docs/**'
