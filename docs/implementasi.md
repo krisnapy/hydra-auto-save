@@ -2,6 +2,18 @@
 
 Tanggal: 31 Oktober 2026 WITA. Status: paket Windows awal tersedia; uji game nyata belum dilakukan.
 
+## Pemeriksaan backup dan status jeda aman — 0.2.2
+
+Kode 0.1.5 yang diperiksa ([edff5cd](https://github.com/krisnapy/hydra-auto-save/commit/edff5cd80094d9e0eb1731de2dddd622f9ddbd51)) menampilkan stabilizing, menunggu 1,2 detik, lalu membaca ulang seluruh sumber sebelum membandingkan fingerprint dengan backup sebelumnya. Ini menjelaskan mengapa label menunggu dapat muncul pada semua game walaupun isinya tidak berubah; label juga menetap selama pembacaan ulang yang lama. Ini penyebab umum yang terverifikasi di kode; kondisi file/drive PC pengguna belum diobservasi.
+
+0.2.2 membandingkan pembacaan awal dengan versi normal terakhir yang lolos pemeriksaan riwayat sebelum jeda. Isi identik langsung menghasilkan tidak ada versi baru; backup pengaman restore selalu dipaksa menjalani pemeriksaan penuh. Isi baru menunggu jeda aman dan dibaca ulang; perubahan singkat mendapat maksimum tiga jendela kestabilan, lalu berhenti jika masih berubah. Sumber tetap dibandingkan setelah penyalinan dan pending tidak dipublikasikan jika tidak sesuai. Pesan menyertakan maksimal tiga lokasi yang berubah/bertambah/hilang serta jumlah sisanya.
+
+Phase checking-stability memisahkan pembacaan ulang dari waktu tunggu; callback scan menampilkan jumlah file yang telah diperiksa, termasuk scan awal dan verifikasi setelah penyalinan. Jumlah total yang belum diketahui tetap tanpa persentase. Tidak ada pengecualian file log/cache otomatis atau pengurangan pemeriksaan untuk versi baru.
+
+Retry otomatis per game memakai backoff 5,10,20,40 hingga maksimum60 detik; event watcher tidak melewati batas ini. Game lain tetap diproses dan kontrol manual/game ditutup boleh mencoba langsung. Keberhasilan, penonaktifan, tujuan baru, atau lokasi baru mereset backoff terkait. State retry hanya di memori. File sumber yang hilang saat copy atau diganti saat scan ditandai transient; kesalahan akses/tujuan lain tetap dilaporkan.
+
+70 tes lokal dan pemeriksaan integrasi lulus. Skenario mencakup skip kestabilan/scan kedua untuk isi identik, penulisan singkat yang selesai dalam satu backup, penulisan terus-menerus yang dibatasi beserta lokasi penyebab, serta backoff/fairness/manual bypass. Windows: seluruh70 tes, pemeriksaan integrasi dan typecheck Hydra lulus; startup unpacked/portable, pengaturan backup, endpoint progres dan tutup/buka ulang tray lulus. [Build41234708380](https://github.com/krisnapy/hydra-auto-save/actions/runs/41234708380), [verifikasi/publikasi41235274406](https://github.com/krisnapy/hydra-auto-save/actions/runs/41235274406), sumber [e2e62a4](https://github.com/krisnapy/hydra-auto-save/commit/e2e62a4be8f0e296710a06e7e06fe9ac493ac88b). [Rilis v0.2.2](https://github.com/krisnapy/hydra-auto-save/releases/tag/v0.2.2) publik; checksum/digest dan4 tautan anonim lulus. Pengujian file/game/cloud nyata di PC pengguna belum dilakukan.
+
 ## Progres halus dan folder save — 0.2.1
 
 Panel progres terpisah dari state/pembaruan halaman utama. Endpoint `progress` membaca salinan operasi dan hasil terakhir dari memori secara sinkron; tidak membaca riwayat, ruang disk, journal, atau pustaka game. Polling serial dilakukan tiap 250 ms selama operasi/permintaan aktif, satu detik saat idle, berhenti saat halaman tersembunyi/unmount, dan mengabaikan respons terlambat. Hasil identik tidak menggambar ulang panel. Bar memakai transform dengan transisi 220 ms; tahap tanpa jumlah memakai animasi aktivitas tanpa persentase perkiraan. Preferensi reduced motion dihormati. Riwayat tetap diperbarui terpisah setiap 10 detik.
