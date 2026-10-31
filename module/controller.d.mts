@@ -7,7 +7,7 @@ export interface BackupOperation {
 export interface BackupSnapshot {
   operations: BackupOperation[];
   lastOperation?: { kind: string; gameId?: string; status: string; at: string; detail?: string };
-  enabled: boolean; destination: string; ludusavi: string; retention: number; deviceId: string;
+  enabled: boolean; destination: string; backupDirectory: string; ludusavi: string; retention: number; deviceId: string;
   status: { status: string; detail?: string };
   roots: SaveRoot[];
   versions: Array<{ id: string; createdAt: string; reason: string; safety: boolean; files: number }>;

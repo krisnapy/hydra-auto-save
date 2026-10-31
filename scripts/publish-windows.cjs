@@ -44,7 +44,11 @@ module.exports = async ({ github, context, core }) => {
     name: `Hydra Personal Backup ${version} — Windows x64`, draft: true, prerelease: true,
     body: [
       'Versi uji awal berbasis Hydra Launcher 4.3.0.', '',
-      '## Perbaikan 0.1.3',
+      '## Perbaikan 0.1.4',
+      '- Tombol Buka lokasi save pada setiap lokasi save game; file save disorot di File Explorer tanpa dijalankan.',
+      '- Tombol Buka lokasi backup membuka folder backup game/perangkat ini; Settings membuka folder tujuan utama.',
+      '- Lokasi yang hilang dan kegagalan membuka Explorer menampilkan alasan yang jelas. Membuka folder tidak menunggu antrean backup.',
+      '', '## Perbaikan performa 0.1.3 yang disertakan',
       '- Cache dependensi/native terikat sumber Hydra dan lockfile; cache diverifikasi dengan runtime Electron sebelum dipakai.',
       '- Pembaruan profil melalui internet dan integrasi Epic tidak lagi menahan pembukaan jendela.',
       '- Menu tray langsung memakai cache, menampilkan akses pengaturan/status backup, dan membuka kembali jendela yang diminimalkan.',

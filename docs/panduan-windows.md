@@ -41,3 +41,9 @@ Menutup jendela utama melepaskan renderer utamanya, sementara proses Hydra tetap
 Saat semua jendela tersembunyi/minimized dan tidak ada game terpantau yang berjalan, pemeriksaan otomatis isi save dibatasi tiap 30 detik. Saat game berjalan atau jendela terlihat, interval kembali 5 detik. Backup manual dan pemicu game ditutup tetap langsung masuk antrean. Pengaturan yang tidak berubah tidak ditulis ulang ke disk. Pembaruan progres/riwayat antarmuka dihentikan saat halaman tersembunyi.
 
 Tray tetap memerlukan proses utama Hydra dan layanan yang sedang dipakai, termasuk pemantauan game, download aktif, serta backup. Ini bukan janji pemakaian CPU/RAM nol. Installer disarankan untuk penggunaan harian; portable perlu mengekstrak paket ketika dijalankan sehingga pembukaan awal dapat lebih lambat.
+
+## Membuka lokasi save dan backup
+
+Pada halaman game → Personal Cloud Backup, klik **Buka lokasi save** di samping lokasi yang ingin dilihat. Jika lokasi berupa file, File Explorer membuka folder induknya dan menyorot file tersebut. Untuk beberapa lokasi save, tersedia tombol pada setiap lokasi.
+
+Klik **Buka lokasi backup** untuk membuka folder backup game pada perangkat ini. Pada Settings → Personal Cloud Backup, tombol yang sama membuka folder tujuan utama. Folder game tersedia setelah backup pertama dibuat. Jika lokasi save dihapus atau folder cloud tidak tersedia, aplikasi menampilkan alasan; tombol ini tidak membuat atau memulihkan save. Backup memakai struktur internal aplikasi; gunakan tombol **Pulihkan** untuk mengembalikan progres.

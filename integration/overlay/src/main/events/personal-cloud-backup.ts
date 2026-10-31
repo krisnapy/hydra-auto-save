@@ -1,4 +1,5 @@
-import { dialog } from "electron";
+import { stat } from "node:fs/promises";
+import { dialog, shell } from "electron";
 import { registerEvent } from "./register-event";
 import { assertTrustedEpicSender } from "./epic/assert-trusted-sender";
 import { WindowManager } from "../services/window-manager";
@@ -18,6 +19,25 @@ registerEvent("personalBackup", async (event, request: unknown) => {
   if (!parent) throw new Error("Jendela utama tidak tersedia.");
   const gameId = typeof input.gameId === "string" ? string(input.gameId) : undefined;
   switch (input.action) {
+    case "open-save":
+    case "open-backup": {
+      // Resolve only saved configuration; never accept a renderer-supplied path.
+      const snapshot = await controller.snapshot(gameId, true);
+      const root = input.action === "open-save" ? snapshot.roots.find(item => item.id === string(input.rootId)) : undefined;
+      if (input.action === "open-save" && !root) throw new Error("Lokasi save belum diatur atau sudah berubah. Deteksi ulang lokasi save.");
+      const target = root?.path ?? snapshot.backupDirectory;
+      if (!target) throw new Error("Folder backup belum dipilih.");
+      const info = await stat(target).catch((error: NodeJS.ErrnoException) => {
+        if (error.code === "ENOENT") throw new Error(root ? "Lokasi save sudah tidak ditemukan. Deteksi ulang atau pilih lokasi save." : "Folder backup belum tersedia. Buat backup terlebih dahulu atau periksa folder sinkronisasi.");
+        throw error;
+      });
+      if (root?.kind === "file" && info.isFile()) shell.showItemInFolder(target);
+      else if (info.isDirectory()) {
+        const failure = await shell.openPath(target);
+        if (failure) throw new Error(`Tidak dapat membuka folder: ${failure}`);
+      } else throw new Error("Lokasi bukan file save atau folder yang dapat dibuka.");
+      return snapshot;
+    }
     case "snapshot": return controller.snapshot(gameId, input.lightweight === true);
     case "configure": {
       if (typeof input.enabled !== "boolean" || !Number.isInteger(input.retention)) throw new Error("Pengaturan tidak valid.");
