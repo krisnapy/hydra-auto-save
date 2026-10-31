@@ -37,6 +37,7 @@ export function integrate(files) {
 async function walk(directory) {
   const result = [];
   for (const entry of await fs.readdir(directory, { withFileTypes: true })) {
+    if (entry.name === '.DS_Store') continue;
     const file = path.join(directory, entry.name);
     if (entry.isDirectory()) result.push(...await walk(file));
     else result.push(file);

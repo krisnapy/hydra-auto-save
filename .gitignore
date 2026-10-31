@@ -4,3 +4,4 @@ node_modules/
 .verification/
 *.tsbuildinfo
 dist/
+.DS_Store
