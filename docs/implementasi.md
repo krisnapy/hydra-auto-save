@@ -1,6 +1,18 @@
 # Catatan implementasi awal
 
-Tanggal: 31 Oktober 2026 WITA. Status: source implementasi awal; belum rilis Windows.
+Tanggal: 31 Oktober 2026 WITA. Status: paket Windows awal tersedia; uji game nyata belum dilakukan.
+
+## Paket Windows terverifikasi
+
+- [Build Windows 41194991037](https://github.com/krisnapy/hydra-auto-save/actions/runs/41194991037) berhasil dari source commit `6f6125393c1f611cd8fc2256d0327a978b224141`.
+- 31 pengujian modul lulus di Windows; pemeriksaan tipe seluruh Hydra dan bundling Electron berhasil. Installer NSIS dan portable x64 dibuat tanpa publikasi ke repository upstream.
+- [Uji paket 41195867955](https://github.com/krisnapy/hydra-auto-save/actions/runs/41195867955) memeriksa checksum file unduhan, membuka portable di Windows, memanggil IPC snapshot, mendeteksi Ludusavi bawaan, dan membuka halaman Personal Cloud Backup. Screenshot dan log startup disertakan dalam artifact.
+- [Paket terverifikasi](https://github.com/krisnapy/hydra-auto-save/actions/runs/41195867955/artifacts/13040881038) tersedia sampai 30 November 2026. Pengguna tidak perlu memasang Node.js. Build belum ditandatangani dengan sertifikat Windows.
+- Pembaruan resmi otomatis dinonaktifkan; renderer menggunakan file lokal agar antarmuka backup tidak terganti. Profil/pustaka Hydra tetap memakai identitas produk yang sama; jalankan satu salinan saja dan pilih folder instalasi berbeda.
+- Endpoint publik build disalin dari log release resmi Hydra v4.3.0 [41142471461](https://github.com/hydralauncher/hydra/actions/runs/41142471461); tidak ada kredensial cloud atau token pribadi dalam konfigurasi build.
+- Temuan Windows: checkout CRLF harus dinormalisasi untuk pemeriksaan sumber, sedangkan cadangan sumber mempertahankan format aslinya. Metadata `.DS_Store` dikecualikan dari integrasi.
+
+Catatan di bawah merekam hasil tahap awal sebelum build Windows. Verifikasi Windows di atas memperbarui status build/typecheck; pengujian game/cloud nyata dan pemasangan interaktif di PC pengguna masih diperlukan.
 
 ## Dasar integrasi yang diperiksa
 

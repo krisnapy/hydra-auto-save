@@ -1,10 +1,12 @@
 # Hydra Personal Cloud Backup — 0.1.0
 
-Implementasi awal modul backup untuk salinan kode **Hydra Launcher 4.3.0 di Windows**. Proyek ini berisi mesin backup, tampilan pengaturan dan riwayat per game, serta pemasang integrasi ke sumber Hydra. Ini **belum installer Windows siap pakai** dan belum diuji langsung dengan game atau penyedia cloud di Windows.
+Implementasi awal modul backup untuk salinan kode **Hydra Launcher 4.3.0 di Windows**. Tersedia installer dan aplikasi portable Windows x64 dengan runtime serta Ludusavi bawaan. Build, pemeriksaan tipe seluruh Hydra, dan uji membuka aplikasi/pengaturan backup di Windows telah berhasil. Pengujian game nyata dan penyedia cloud masih diperlukan.
 
 Draft awal tetap tersedia di [docs/rancangan-auto-backup.md](docs/rancangan-auto-backup.md). Keputusan implementasi awal dan batas verifikasi tercatat di [docs/implementasi.md](docs/implementasi.md).
 
 ## Paket Windows tanpa Node.js
+
+[Unduh paket Windows yang telah diuji dibuka](https://github.com/krisnapy/hydra-auto-save/actions/runs/41195867955/artifacts/13040881038) (sekitar 427 MB; perlu masuk GitHub). Paket awal ini tersedia sampai 30 November 2026 dan berisi installer, aplikasi portable, checksum, panduan, serta screenshot hasil uji. Build: [41194991037](https://github.com/krisnapy/hydra-auto-save/actions/runs/41194991037). Uji aplikasi: [41195867955](https://github.com/krisnapy/hydra-auto-save/actions/runs/41195867955).
 
 Workflow **Windows installer** membangun installer dan aplikasi portable Windows x64 dari sumber Hydra 4.3.0 yang dipatok ke commit di atas. Lihat [hasil build](https://github.com/krisnapy/hydra-auto-save/actions/workflows/windows.yml). Setelah run berhasil, unduh artifact **Hydra-Personal-Backup-Windows-x64**, ekstrak ZIP, lalu jalankan file `…-setup.exe` atau `…-portable.exe`. Node.js dan Ludusavi dibawa oleh paket; pengguna tidak perlu memasangnya terpisah. Selama run belum berhasil, paket belum tersedia.
 
@@ -64,9 +66,9 @@ Mematikan Auto Backup menghentikan penjadwalan berikutnya. Operasi yang sudah be
 
 ## Batas versi ini
 
-- Belum ada pengujian langsung di Windows, installer `.exe`, pengujian game nyata, atau verifikasi sinkronisasi OneDrive/Google Drive/Dropbox/pCloud.
-- Belum ada build atau pemeriksaan tipe seluruh Hydra. Pemeriksaan lokal mencakup mesin backup, pemasang, sintaks file yang dihubungkan, tipe komponen React, dan bundle modul utama.
-- Kontrak CLI Ludusavi dibuat dari dokumentasi upstream yang diperiksa saat pengerjaan; kompatibilitas binary yang dibawa build Hydra perlu diuji. Binary dan database Ludusavi tidak didistribusikan oleh proyek ini.
+- Installer dan portable `.exe` berhasil dibuat. Aplikasi portable berhasil dibuka di Windows CI; layanan backup, renderer lokal, pengaturan backup, dan Ludusavi bawaan terverifikasi. Instalasi interaktif di PC pengguna, game nyata, dan sinkronisasi OneDrive/Google Drive/Dropbox/pCloud belum diuji.
+- Sebanyak 31 pengujian lulus di Windows dan lokal. Pemeriksaan tipe seluruh Hydra terintegrasi serta build Windows lulus. Ini belum membuktikan konsistensi save semua game.
+- Binary Ludusavi bawaan berhasil menjalankan `--version`. Kontrak deteksi save masih diuji dengan runner tiruan; pencocokan game nyata dan unduhan database perlu diuji pada PC pengguna. Database diunduh pada penggunaan pertama.
 - Lokasi save relatif terhadap folder instalasi bergantung pada root instalasi yang dapat dikenali Ludusavi; lokasi instalasi Hydra belum diteruskan sebagai root pemindaian. Gunakan lokasi manual jika file tersebut belum ditemukan.
 - Backup/riwayat yang ditawarkan untuk pemulihan hanya milik perangkat saat ini. Backup perangkat lain tetap terpisah; pemindahan/pemulihan lintas perangkat belum tersedia.
 - Pemulihan memerlukan executable `.exe` langsung. Pemulihan diblokir jika ada proses dalam folder executable yang diketahui, peluncuran masih berlangsung, atau pemindaian proses gagal. Sesudah peluncuran melalui Hydra, ada jeda perlindungan 30 detik sebelum pemulihan diizinkan.
