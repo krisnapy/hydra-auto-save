@@ -1,21 +1,16 @@
-name: Publish Windows downloads
+name: Verify public Windows downloads
 
 on:
   push:
     branches: [main]
-    paths: ['.github/workflows/split-windows.yml', 'scripts/split-windows.mjs']
+    paths: ['.github/workflows/split-windows.yml']
   workflow_dispatch:
 
 permissions:
-  contents: write
-  actions: read
-
-concurrency:
-  group: publish-windows-v0.1.0
-  cancel-in-progress: false
+  contents: read
 
 jobs:
-  split:
+  verify:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -25,118 +20,15 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22.21.0
-      - name: Download existing verified package
-        uses: actions/download-artifact@v4
-        with:
-          name: Hydra-Personal-Backup-Windows-Verified
-          path: package
-          run-id: 41195867955
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Verify original files and separate downloads
-        run: node scripts/split-windows.mjs package downloads
-      - name: Installer download
-        uses: actions/upload-artifact@v4
-        with:
-          name: Hydra-Personal-Backup-Installer-Windows-x64
-          path: downloads/setup/
-          if-no-files-found: error
-          retention-days: 30
-          compression-level: 0
-      - name: Portable download
-        uses: actions/upload-artifact@v4
-        with:
-          name: Hydra-Personal-Backup-Portable-Windows-x64
-          path: downloads/portable/
-          if-no-files-found: error
-          retention-days: 30
-          compression-level: 0
-      - name: Publish verified files to public Releases
+      - name: Verify anonymous release downloads
         uses: actions/github-script@v7
         with:
           script: |
-            const fs = require('node:fs/promises');
-            const path = require('node:path');
-            const { createHash } = require('node:crypto');
-            const { owner, repo } = context.repo;
-            const tag = 'v0.1.0';
-            const checksums = (await fs.readFile('package/SHA256SUMS.txt', 'utf8')).trim().split(/\r?\n/);
-            const files = [];
-            for (const line of checksums) {
-              const match = /^([a-f0-9]{64})  (Hydra-Personal-Backup-[\w.-]+-windows-x64-(setup|portable)\.exe)$/i.exec(line);
-              if (!match) throw new Error('Invalid checksum entry');
-              files.push({ name: match[2], file: path.join('downloads', match[3], match[2]), hash: match[1].toLowerCase() });
+            const verify = require('./scripts/verify-public-download.cjs');
+            const {version} = require('./package.json');
+            const {data: release} = await github.rest.repos.getReleaseByTag({...context.repo, tag: `v${version}`});
+            if (release.draft || release.assets.length !== 4) throw new Error('Release incomplete');
+            for (const asset of release.assets) {
+              if (asset.state !== 'uploaded' || !/^sha256:[a-f0-9]{64}$/.test(asset.digest)) throw new Error('Invalid published asset');
+              await verify(asset, {log: message => core.info(message)});
             }
-            if (files.length !== 2 || new Set(files.map(f => f.name)).size !== 2) throw new Error('Expected two executables');
-            files.push({name: 'SHA256SUMS.txt', file: 'package/SHA256SUMS.txt'});
-            files.push({name: 'Panduan-Windows.md', file: 'package/README.md'});
-            const verifyPublicDownloads = async () => {
-              const {data: current} = await github.rest.repos.getReleaseByTag({owner, repo, tag});
-              if (current.draft || current.assets.length !== 4) throw new Error('Release is incomplete');
-              for (const file of files) {
-                const asset = current.assets.find(a => a.name === file.name);
-                if (!asset || asset.state !== 'uploaded') throw new Error(`Missing asset: ${file.name}`);
-                const data = await fs.readFile(file.file);
-                const digest = createHash('sha256').update(data).digest('hex');
-                if (file.hash && file.hash !== digest) throw new Error(`Local checksum mismatch: ${file.name}`);
-                if (asset.size !== data.length || asset.digest !== `sha256:${digest}`) throw new Error(`Published checksum mismatch: ${file.name}`);
-                // Native fetch is anonymous; use fresh published URLs, not draft asset URLs.
-                let response;
-                for (let attempt = 0; attempt < 12; attempt++) {
-                  response = await fetch(asset.browser_download_url, {method: 'HEAD', redirect: 'follow'});
-                  if (response.ok) break;
-                  await new Promise(resolve => setTimeout(resolve, 5000));
-                }
-                if (!response.ok) throw new Error(`Anonymous download failed: ${asset.browser_download_url}: ${response.status}`);
-                if (Number(response.headers.get('content-length')) !== asset.size) throw new Error(`Public size mismatch: ${file.name}`);
-                core.info(`Anonymous download verified: ${asset.browser_download_url}`);
-              }
-            };
-            // Existing published releases are immutable in this workflow; never replace assets.
-            try {
-              const {data: existing} = await github.rest.repos.getReleaseByTag({owner, repo, tag});
-              if (existing.draft) throw new Error('Inspect existing draft before publishing again');
-              await verifyPublicDownloads();
-              return;
-            } catch (error) {
-              if (error.status !== 404) throw error;
-            }
-            const { data: release } = await github.rest.repos.createRelease({
-              owner, repo, tag_name: tag,
-              target_commitish: context.sha,
-              name: 'Hydra Personal Backup 0.1.0 — Windows x64',
-              draft: true, prerelease: true,
-              body: [
-                'Versi uji awal modul Personal Cloud Backup, berbasis Hydra Launcher 4.3.0.',
-                '',
-                '## Unduh dan gunakan',
-                '- Pilih **setup.exe** untuk instalasi atau **portable.exe** untuk langsung mencoba. Tidak perlu mengunduh keduanya.',
-                '- Unduhan publik ini tidak memerlukan login GitHub. Node.js dan Ludusavi sudah disertakan.',
-                '- Tutup Hydra resmi sebelum membuka aplikasi ini. Untuk installer, pilih folder instalasi berbeda karena profil lokal masih sama.',
-                '- Buka Settings → Personal Cloud Backup, pilih folder sinkronisasi cloud, lalu aktifkan Auto Backup.',
-                '- Aplikasi belum ditandatangani secara digital.',
-                '',
-                '## Verifikasi dan batas pengujian',
-                'Sumber executable: commit `6f6125393c1f611cd8fc2256d0327a978b224141`, verifikasi paket run `41195867955`. Tag rilis menunjuk commit publikasi. Checksum SHA-256 diperiksa sebelum publikasi. File aplikasi sama dengan paket yang berhasil diuji di Windows CI: aplikasi portable, renderer lokal, IPC backup, halaman pengaturan, dan Ludusavi bawaan.',
-                '31 pengujian dan pemeriksaan tipe Hydra lulus. Instalasi interaktif, save game nyata, dan sinkronisasi penyedia cloud belum diuji. Backup lokal selesai tidak menjamin unggahan cloud selesai.',
-                '',
-                '[Build Windows](https://github.com/krisnapy/hydra-auto-save/actions/runs/41194991037) · [Uji aplikasi](https://github.com/krisnapy/hydra-auto-save/actions/runs/41195867955)',
-                'Lihat Panduan-Windows.md dan SHA256SUMS.txt di bawah.'
-              ].join('\n')
-            });
-            const assets = [];
-            for (const file of files) {
-              const data = await fs.readFile(file.file);
-              const digest = createHash('sha256').update(data).digest('hex');
-              if (file.hash && file.hash !== digest) throw new Error(`Checksum mismatch: ${file.name}`);
-              const { data: asset } = await github.rest.repos.uploadReleaseAsset({
-                owner, repo, release_id: release.id, name: file.name, data,
-                headers: { 'content-type': file.name.endsWith('.exe') ? 'application/octet-stream' : 'text/plain', 'content-length': data.length }
-              });
-              if (asset.state !== 'uploaded' || asset.size !== data.length) throw new Error(`Incomplete asset: ${file.name}`);
-              if (asset.digest && asset.digest !== `sha256:${digest}`) throw new Error(`Uploaded checksum mismatch: ${file.name}`);
-              assets.push(asset);
-              core.info(`${file.name}: ${data.length} bytes; sha256:${digest}`);
-            }
-            const { data: published } = await github.rest.repos.updateRelease({owner, repo, release_id: release.id, draft: false});
-            core.info(`Published: ${published.html_url}`);
-            await verifyPublicDownloads();
