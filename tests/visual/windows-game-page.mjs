@@ -16,12 +16,13 @@ await fs.mkdir(path.join(output, 'screenshots'), { recursive: true });
 const scratch = await fs.mkdtemp(path.join(os.tmpdir(), 'hydra-game-ui-'));
 const roaming = path.join(scratch, 'Roaming');
 const local = path.join(scratch, 'Local');
+const userData = path.join(scratch, 'profile');
 await Promise.all([roaming, local].map(folder => fs.mkdir(folder, { recursive: true })));
 const server = net.createServer();
 await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
 const port = server.address().port;
 await new Promise(resolve => server.close(resolve));
-const child = spawn(executable, [`--remote-debugging-port=${port}`, '--remote-debugging-address=127.0.0.1'], {
+const child = spawn(executable, [`--user-data-dir=${userData}`, `--remote-debugging-port=${port}`, '--remote-debugging-address=127.0.0.1'], {
   env: { ...process.env, APPDATA: roaming, LOCALAPPDATA: local }, stdio: ['ignore', 'pipe', 'pipe'],
 });
 let logs = '';
@@ -29,16 +30,6 @@ child.stdout.on('data', data => { logs += data; });
 child.stderr.on('data', data => { logs += data; });
 let browser;
 let page;
-async function findSettings(folder, depth = 0) {
-  if (depth > 4) return null;
-  for (const entry of await fs.readdir(folder, { withFileTypes: true })) {
-    if (entry.isDirectory()) {
-      const found = await findSettings(path.join(folder, entry.name), depth + 1);
-      if (found) return found;
-    } else if (entry.name === 'settings.json' && path.basename(folder) === 'personal-cloud-backup') return path.join(folder, entry.name);
-  }
-  return null;
-}
 try {
   for (let attempt = 0; attempt < 90; attempt++) {
     if (child.exitCode !== null) throw new Error(`Aplikasi berhenti (${child.exitCode}).`);
@@ -53,8 +44,8 @@ try {
   page = browser.contexts().flatMap(context => context.pages()).find(item => item.url().startsWith('file:') && item.url().includes('renderer'));
   await page.waitForFunction(() => Boolean(window.personalBackup && window.electron?.addCustomGameToLibrary));
   const snapshot = await page.evaluate(() => window.personalBackup.invoke({ action: 'snapshot' }));
-  const settingsFile = await findSettings(roaming);
-  if (!settingsFile || snapshot.setup?.games.length !== 0 || snapshot.enabled) throw new Error('Profil CI terisolasi belum terbukti; penyisipan fixture dibatalkan.');
+  const settingsFile = path.join(userData, 'personal-cloud-backup', 'settings.json');
+  if (snapshot.setup?.games.length !== 0 || snapshot.enabled) throw new Error('Profil CI terisolasi belum terbukti; penyisipan fixture dibatalkan.');
   const settings = JSON.parse(await fs.readFile(settingsFile, 'utf8'));
   if (settings.deviceId !== snapshot.deviceId || Object.keys(settings.games).length !== 0) throw new Error('Identitas profil tidak sesuai folder sementara.');
   const dummy = path.join(scratch, 'Visual-Fixture-Do-Not-Run.exe');
