@@ -1,0 +1,20 @@
+import * as fs from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { BackupEngine, makeRoots } from '../module/engine.mjs';
+
+const project = fileURLToPath(new URL('..', import.meta.url));
+const directory = await fs.mkdtemp(path.join(project, '.demo-'));
+const save = path.join(directory, 'game-save');
+await fs.mkdir(save);
+const file = path.join(save, 'progress.sav');
+await fs.writeFile(file, 'Progres awal: level 1');
+const roots = await makeRoots([{ path: save }]);
+const engine = new BackupEngine({ destination: path.join(directory, 'cloud-folder'), deviceId: 'demo-pc', stateDirectory: path.join(directory, 'local-settings'), stableMs: 100, assertStopped: async () => {}, onStatus: (_, status, detail) => console.log(status, detail ?? '') });
+const first = await engine.backup('demo:game', roots);
+await fs.writeFile(file, 'Progres baru: level 2');
+await engine.backup('demo:game', roots, { reason: 'game-closed' });
+await engine.restore('demo:game', roots, first.id, true);
+console.log('Hasil pemulihan:', await fs.readFile(file, 'utf8'));
+console.log('Versi lengkap:', (await engine.versions('demo:game')).length);
+console.log('File demo tersimpan di:', directory);

@@ -1,0 +1,34 @@
+{
+  "repository": "hydralauncher/hydra",
+  "ref": "v4.3.0",
+  "commit": "5845549311a20d485d027da875307fc70897bfdc",
+  "files": {
+    "package.json": {
+      "sha256": "ce8c6a07481a3920e9bbacbbb6cfb9c323a073279faae6749907e99baaec4818"
+    },
+    "src/main/events/index.ts": {
+      "sha256": "fc9b556e133e5b51d2614adb146d03111379cc9186645ac2ab038f7f07075e7c"
+    },
+    "src/main/helpers/launch-game.ts": {
+      "sha256": "dd229a21c97ffa0a884c6c4414d4d94d789f3c766f971c7d6c1a3ea409d39591"
+    },
+    "src/main/index.ts": {
+      "sha256": "bf354115517cb13f1b59c7ba4fb9b56ff9b2e39e06e9680ac4b78cbaa82cdb5a"
+    },
+    "src/main/services/process-watcher.ts": {
+      "sha256": "48b307b690f91628d0eca3571fd89ab55c645065cb469c62c430ca394c854507"
+    },
+    "src/preload/index.ts": {
+      "sha256": "c36074e7ddf1e3be633af419ce7ed58a753c352e5cf63bfb4b7aa28a9c6bfe36"
+    },
+    "src/renderer/src/context/settings/settings.context.tsx": {
+      "sha256": "35ce314518582a0cbbbc5458b357b25981e18b39c404f8bdc1345b352a7f3d59"
+    },
+    "src/renderer/src/pages/game-details/game-details-content.tsx": {
+      "sha256": "c5bd37f0099a3ec1bfa29fb1a3da251a433222beff6c0dff69dadf7c9a57570f"
+    },
+    "src/renderer/src/pages/settings/settings.tsx": {
+      "sha256": "f2fb1f7494f4a495f807be3bf89a340b52bcf1d562a2eb2014470c4059dc20f6"
+    }
+  }
+}
