@@ -2,6 +2,16 @@
 
 Tanggal: 31 Oktober 2026 WITA. Status: paket Windows awal tersedia; uji game nyata belum dilakukan.
 
+## Cache pemeriksaan riwayat — 0.1.5
+
+Tahap pertama tindak lanjut optimasi: kurangi pembacaan isi backup yang berulang. `versions()` tetap membaca manifest/penanda COMPLETE serta memeriksa keberadaan dan metadata setiap blob. Hash payload dipakai ulang hanya ketika hash yang diharapkan, device/inode file, ukuran, mtime nanodetik, dan ctime nanodetik sama. File yang berubah selama pemeriksaan ditolak. Cache LRU berada di memori, maksimum 8192 file; pemeriksaan bersamaan atas file/signature yang sama berbagi satu pekerjaan. Restart mengosongkan cache. Ini bukan pengganti autentikasi backup dan tidak menghilangkan pembacaan metadata atau pemeriksaan pertama terhadap berkas cloud.
+
+Pemulihan memakai pemeriksaan hash baru yang melewati cache hanya untuk versi yang dipilih. Penyalinan ke staging juga tetap diverifikasi. Backup baru diperiksa penuh sebelum retensi boleh menghapus versi lama. Format penyimpanan tetap schema 1, tanpa migrasi atau deduplikasi antarversi.
+
+51 tes lokal lulus dan pemeriksaan integrasi lokal lulus. Pada fixture payload 8 MiB, dua permintaan riwayat awal bersamaan berbagi satu pembacaan 8.388.608 byte; 20 pembaruan riwayat berikutnya menambah 0 byte payload yang di-hash. Uji ini membuktikan pengurangan pembacaan payload dalam fixture, bukan persentase peningkatan waktu/RAM di PC pengguna. Uji lain mencakup kerusakan berukuran sama dengan mtime dikembalikan, blob hilang, marker berubah, pemulihan yang melewati cache, serta kegagalan retensi ketika versi baru rusak. Belum ada perubahan ukuran installer, kompresi/deduplikasi, pemantauan folder, enkripsi, tanda tangan digital, atau pemulihan journal lewat UI dalam tahap ini.
+
+51 tes juga lulus di Windows; log membuktikan 8.388.608 byte pada pemeriksaan riwayat awal dan 0 byte payload tambahan pada 20 pembaruan berikutnya. Pemeriksaan tipe seluruh Hydra serta [build Windows 41229882605](https://github.com/krisnapy/hydra-auto-save/actions/runs/41229882605) lulus dari commit `edff5cd80094d9e0eb1731de2dddd622f9ddbd51`. Uji startup executable unpacked dan tutup/buka ulang tray lulus. [Verifikasi/publikasi 41230472435](https://github.com/krisnapy/hydra-auto-save/actions/runs/41230472435) membuka portable, memeriksa checksum, dan menerbitkan [rilis publik 0.1.5](https://github.com/krisnapy/hydra-auto-save/releases/tag/v0.1.5). Keempat aset lolos pemeriksaan unduh anonim. Pengujian game/cloud nyata dan dampak performa di PC pengguna tetap diperlukan.
+
 ## Buka lokasi save dan backup — 0.1.4
 
 Halaman game menampilkan tombol **Buka lokasi save** di setiap lokasi yang terdaftar, serta **Buka lokasi backup** untuk folder game/perangkat tersebut. Settings membuka folder tujuan backup utama. Lokasi backup berasal dari `BackupEngine.directory`, sehingga memakai struktur yang sama dengan penyimpanan riwayat.
