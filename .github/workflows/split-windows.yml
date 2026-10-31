@@ -69,10 +69,34 @@ jobs:
             if (files.length !== 2 || new Set(files.map(f => f.name)).size !== 2) throw new Error('Expected two executables');
             files.push({name: 'SHA256SUMS.txt', file: 'package/SHA256SUMS.txt'});
             files.push({name: 'Panduan-Windows.md', file: 'package/README.md'});
+            const verifyPublicDownloads = async () => {
+              const {data: current} = await github.rest.repos.getReleaseByTag({owner, repo, tag});
+              if (current.draft || current.assets.length !== 4) throw new Error('Release is incomplete');
+              for (const file of files) {
+                const asset = current.assets.find(a => a.name === file.name);
+                if (!asset || asset.state !== 'uploaded') throw new Error(`Missing asset: ${file.name}`);
+                const data = await fs.readFile(file.file);
+                const digest = createHash('sha256').update(data).digest('hex');
+                if (file.hash && file.hash !== digest) throw new Error(`Local checksum mismatch: ${file.name}`);
+                if (asset.size !== data.length || asset.digest !== `sha256:${digest}`) throw new Error(`Published checksum mismatch: ${file.name}`);
+                // Native fetch is anonymous; use fresh published URLs, not draft asset URLs.
+                let response;
+                for (let attempt = 0; attempt < 12; attempt++) {
+                  response = await fetch(asset.browser_download_url, {method: 'HEAD', redirect: 'follow'});
+                  if (response.ok) break;
+                  await new Promise(resolve => setTimeout(resolve, 5000));
+                }
+                if (!response.ok) throw new Error(`Anonymous download failed: ${asset.browser_download_url}: ${response.status}`);
+                if (Number(response.headers.get('content-length')) !== asset.size) throw new Error(`Public size mismatch: ${file.name}`);
+                core.info(`Anonymous download verified: ${asset.browser_download_url}`);
+              }
+            };
             // Existing published releases are immutable in this workflow; never replace assets.
             try {
-              await github.rest.repos.getReleaseByTag({owner, repo, tag});
-              throw new Error('Release already exists; inspect it before publishing again');
+              const {data: existing} = await github.rest.repos.getReleaseByTag({owner, repo, tag});
+              if (existing.draft) throw new Error('Inspect existing draft before publishing again');
+              await verifyPublicDownloads();
+              return;
             } catch (error) {
               if (error.status !== 404) throw error;
             }
@@ -115,15 +139,4 @@ jobs:
             }
             const { data: published } = await github.rest.repos.updateRelease({owner, repo, release_id: release.id, draft: false});
             core.info(`Published: ${published.html_url}`);
-            // Native fetch carries no GitHub authentication: verify public downloads.
-            for (const asset of assets) {
-              let response;
-              for (let attempt = 0; attempt < 6; attempt++) {
-                response = await fetch(asset.browser_download_url, {method: 'HEAD', redirect: 'follow'});
-                if (response.ok) break;
-                await new Promise(resolve => setTimeout(resolve, 3000));
-              }
-              if (!response.ok) throw new Error(`Anonymous download failed: ${asset.name}: ${response.status}`);
-              if (Number(response.headers.get('content-length')) !== asset.size) throw new Error(`Public download size mismatch: ${asset.name}`);
-              core.info(`Anonymous download verified: ${asset.browser_download_url}`);
-            }
+            await verifyPublicDownloads();
