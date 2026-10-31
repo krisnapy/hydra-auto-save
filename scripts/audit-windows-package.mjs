@@ -22,7 +22,9 @@ const archive = path.join(app, 'resources/app.asar');
 const archiveFiles = [];
 for (const item of asar.listPackage(archive)) {
   const relative = item.replace(/^[/\\]/, '').replaceAll('\\', '/');
-  const stat = asar.statFile(archive, relative);
+  // ASAR resolves metadata using the host's path separator. Keep the portable
+  // slash form for the report, but pass a native path to the Windows reader.
+  const stat = asar.statFile(archive, path.normalize(relative));
   if (typeof stat.size === 'number') archiveFiles.push({ path: relative, bytes: stat.size, unpacked: !!stat.unpacked });
 }
 function groups(entries) {
