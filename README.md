@@ -11,7 +11,7 @@ Repository saat ini privat. Paket baru tersedia melalui workflow [Verify Windows
 - **Hydra-Personal-Backup-Installer-Windows-x64**: ekstrak ZIP dan jalankan berkas `setup.exe` di dalamnya.
 - **Hydra-Personal-Backup-Portable-Windows-x64**: ekstrak ZIP dan jalankan berkas `portable.exe`.
 
-Paket **0.3.0 terverifikasi**: [Installer](https://github.com/krisnapy/hydra-auto-save/actions/runs/41248027671/artifacts/13060640297) · [Portable](https://github.com/krisnapy/hydra-auto-save/actions/runs/41248027671/artifacts/13059459234) · [Galeri tampilan](https://github.com/krisnapy/hydra-auto-save/actions/runs/41248027689/artifacts/13059663777).
+Paket **0.3.0 terverifikasi**: [Installer](https://github.com/krisnapy/hydra-auto-save/actions/runs/41250646812/artifacts/13060648642) · [Portable](https://github.com/krisnapy/hydra-auto-save/actions/runs/41250646812/artifacts/13060463961) · [Galeri tampilan](https://github.com/krisnapy/hydra-auto-save/actions/runs/41250646772/artifacts/13061356239).
 
 Paket sebelumnya **0.2.3 terverifikasi**: [Installer](https://github.com/krisnapy/hydra-auto-save/actions/runs/41245568250/artifacts/13059023197) · [Portable](https://github.com/krisnapy/hydra-auto-save/actions/runs/41245568250/artifacts/13059352420) · [Galeri tampilan](https://github.com/krisnapy/hydra-auto-save/actions/runs/41245568264/artifacts/13059601320).
 

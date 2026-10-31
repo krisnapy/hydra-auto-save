@@ -15,3 +15,21 @@ Pada Run workflow installer, `normal` adalah bawaan distribusi yang sama dengan 
 ## Acuan sebelum perubahan
 
 [Build 41247200550](https://github.com/krisnapy/hydra-auto-save/actions/runs/41247200550): job sekitar 10 menit 20 detik; cache dependensi 29 detik, typecheck 67 detik, kompilasi sekitar 70 detik, pengemasan sekitar 5 menit 30 detik. Jalur cepat menghilangkan pembuatan installer, tetapi tetap menyiapkan folder aplikasi dan menjalankan pemeriksaan. Angka percepatan harus diambil dari run baru, bukan dianggap sebagai hasil hanya dari perubahan konfigurasi.
+
+## Hasil terverifikasi — 1 November 2026 WITA
+
+Sumber akhir: [22a8d4a](https://github.com/krisnapy/hydra-auto-save/commit/22a8d4a95640c8b3e5a21747a664320a21f5f083).
+
+| Jalur | Durasi job Windows | Hasil |
+|---|---:|---|
+| Acuan installer lama | 10 menit 20 detik | Lulus |
+| [Quick terakhir](https://github.com/krisnapy/hydra-auto-save/actions/runs/41250093763) | 6 menit 21 detik | Lulus |
+| [Installer terakhir](https://github.com/krisnapy/hydra-auto-save/actions/runs/41250093857) | 7 menit 56 detik | Lulus |
+
+Ini pengukuran job pada runner berbeda, tanpa waktu antrean dan tanpa menambahkan durasi workflow verifikasi portable/visual sesudahnya. Jalur quick menguji folder aplikasi tanpa menghasilkan installer, jadi hasilnya bukan waktu membuat distribusi lengkap. Bukan jaminan durasi setiap run atau pembuktian kontribusi masing-masing perubahan secara terisolasi. Sebelum pengecualian berkas terakhir, run baru juga lulus: quick 6 menit 57 detik dan installer 9 menit 22 detik; variasi runner nyata terlihat.
+
+80 tes modul/build lokal dan Windows lulus, pemeriksaan integrasi dan tipe Hydra lulus, serta startup unpacked, Ludusavi dan tutup/buka ulang tray lulus di kedua jalur. Audit mendapati `node_modules/classic-level/build/Release/leveldb.lib` berukuran39.286.398 byte (37,5 MiB), berupa masukan static linker yang sudah dikompilasi ke addon. Berkas ini dikecualikan tanpa menghapus addon `.node`. Audit akhir membuktikan jumlah entri ASAR berkurang satu, folder aplikasi quick turun dari 801,5 MiB menjadi 764,0 MiB, dan aplikasi tetap berjalan. Ukuran di disk berbeda dari ukuran installer terkompresi.
+
+Kompresi bawaan tetap `normal`. Pilihan `store` sudah tersedia untuk percobaan manual; perbandingan kecepatan/ukuran installer `store` belum dijalankan. Bun dan runtime pengguna tidak diubah. Percobaan awal audit gagal karena pemisah jalur Windows; pembacaan metadata diperbaiki dan kedua jalur final lulus.
+
+[Verifikasi checksum dan portable](https://github.com/krisnapy/hydra-auto-save/actions/runs/41250646812) serta [28 tes UI dan halaman game Windows](https://github.com/krisnapy/hydra-auto-save/actions/runs/41250646772) juga lulus pada sumber akhir. Artifact installer terpisah sekitar 205,9 MB dan portable 205,7 MB (ukuran ZIP artifact, bukan ukuran folder aplikasi). Repo tetap privat dan publikasi rilis publik dilewati. Tautan unduhan terverifikasi terbaru ada di README.
