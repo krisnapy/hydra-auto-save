@@ -30,11 +30,19 @@ switch (scenario) {
   default: throw new Error(`Skenario tidak dikenal: ${scenario}`);
 }
 current.activity = [{ at, gameId, status: current.status.status, detail: current.status.detail ?? "Data contoh untuk pengujian tampilan." }];
+let cloudState = { provider: "onedrive", clientId: "", connected: false, login: null as null | { userCode: string; expiresAt: number; url: string }, pending: 0, uploaded: 0, uploading: false, error: "", versions: [] as Array<{ name: string; modifiedAt: string; size: number }> };
 const calls: Record<string, unknown>[] = [];
 const snapshot = () => structuredClone(current);
 const invoke = async (request: Record<string, unknown>) => {
   calls.push(request);
   if (request.gameId !== gameId) throw new Error("UI meminta game di luar fixture.");
+  if (request.action === "cloud") {
+    if (request.command === "login") cloudState.login = { userCode: "ABCD-EFGH", expiresAt: Date.now() + 900000, url: "https://microsoft.com/devicelogin" };
+    if (request.command === "disconnect") { cloudState.connected = false; cloudState.login = null; }
+    if (request.command === "list") cloudState.versions = [{ name: "fixture-package.hpb", modifiedAt: at, size: 1024 }];
+    if (request.command === "download") current.versions = [version("downloaded")];
+    return structuredClone(cloudState);
+  }
   if (request.action === "progress") return structuredClone({ operations: current.operations, lastOperation: current.lastOperation });
   if (request.action === "snapshot" || request.action === "open-save" || request.action === "open-backup") return snapshot();
   if (request.action === "backup" || request.action === "restore") {
@@ -52,7 +60,7 @@ const invoke = async (request: Record<string, unknown>) => {
   throw new Error(`Aksi fixture tidak didukung: ${request.action}`);
 };
 window.personalBackup = { invoke: invoke as typeof window.personalBackup.invoke };
-Object.assign(window, { visualFixture: { calls, completeAutomatic: () => { current.operations = []; current.status = { status: "complete" }; current.versions = [version("automatic")]; current.lastOperation = { kind: "automatic", gameId, status: "complete", at }; }, setProgress: (completed: number) => { current.operations[0].completed = completed; } } });
+Object.assign(window, { visualFixture: { calls, connectCloud: () => { cloudState.connected = true; cloudState.login = null; cloudState.pending = 1; }, completeAutomatic: () => { current.operations = []; current.status = { status: "complete" }; current.versions = [version("automatic")]; current.lastOperation = { kind: "automatic", gameId, status: "complete", at }; }, setProgress: (completed: number) => { current.operations[0].completed = completed; } } });
 createRoot(document.getElementById("root")!).render(<main className="visual-harness">
   <p className="visual-harness__notice">UJI TAMPILAN · DATA CONTOH · {scenario}</p>
   <h1>Game Contoh</h1>

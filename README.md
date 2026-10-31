@@ -1,4 +1,4 @@
-# Hydra Personal Cloud Backup — 0.2.3
+# Hydra Personal Cloud Backup — 0.3.0
 
 Implementasi awal modul backup untuk salinan kode **Hydra Launcher 4.3.0 di Windows**. Tersedia installer dan aplikasi portable Windows x64 dengan runtime serta Ludusavi bawaan. Build, pemeriksaan tipe seluruh Hydra, dan uji membuka aplikasi/pengaturan backup di Windows telah berhasil. Pengujian game nyata dan penyedia cloud masih diperlukan.
 
@@ -11,9 +11,11 @@ Repository saat ini privat. Paket baru tersedia melalui workflow [Verify Windows
 - **Hydra-Personal-Backup-Installer-Windows-x64**: ekstrak ZIP dan jalankan berkas `setup.exe` di dalamnya.
 - **Hydra-Personal-Backup-Portable-Windows-x64**: ekstrak ZIP dan jalankan berkas `portable.exe`.
 
-Paket **0.2.3 terverifikasi**: [Installer](https://github.com/krisnapy/hydra-auto-save/actions/runs/41245568250/artifacts/13059023197) · [Portable](https://github.com/krisnapy/hydra-auto-save/actions/runs/41245568250/artifacts/13059352420) · [Galeri tampilan](https://github.com/krisnapy/hydra-auto-save/actions/runs/41245568264/artifacts/13059601320).
+Paket sebelumnya **0.2.3 terverifikasi**: [Installer](https://github.com/krisnapy/hydra-auto-save/actions/runs/41245568250/artifacts/13059023197) · [Portable](https://github.com/krisnapy/hydra-auto-save/actions/runs/41245568250/artifacts/13059352420) · [Galeri tampilan](https://github.com/krisnapy/hydra-auto-save/actions/runs/41245568264/artifacts/13059601320).
 
 Node.js dan Ludusavi tidak perlu dipasang terpisah. Paket menyertakan runtime dan Ludusavi. Artifact berlaku 30 hari. Publikasi rilis publik dilewati selama repository privat; checksum dan pengujian Windows tetap berjalan.
+
+0.3.0 menambahkan OneDrive pribadi langsung: login Microsoft berkode, antrean unggahan yang tersimpan, serta unduhan versi ke riwayat lokal sebelum pemulihan manual. Pendaftaran aplikasi Microsoft dan client ID diperlukan untuk mengaktifkan login. [Panduan OneDrive dan batas tahap awal](docs/onedrive.md). Pengujian akun Microsoft nyata belum dilakukan; jangan menganggap hasil tes simulasi sebagai bukti unggahan nyata.
 
 0.2.3 memperbarui bagian backup di halaman game: lokasi save di kiri, kartu status/tindakan di kanan, riwayat dibuka melalui Pulihkan, dan pilihan lanjutan masuk menu ⋯. Pada jendela sempit tampilan menjadi satu kolom. Proses backup, konfirmasi pemulihan dan backup pengaman tetap menggunakan layanan yang sama. Navigasi serta tampilan halaman lain Hydra tetap mengikuti launcher.
 

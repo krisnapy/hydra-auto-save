@@ -9,6 +9,7 @@ import { launchedGamePids } from "../launched-game-pids";
 import { BackupController } from "./core/controller.mjs";
 import { withRestoreGate } from "./core/launch-guard.mjs";
 import { runWithHydraSaveGuard } from "../epic/cloud-saves";
+import { getOneDrive, stopOneDrive } from "./onedrive";
 import type { Game } from "@types";
 
 let instance: Promise<BackupController> | undefined;
@@ -55,6 +56,9 @@ export const getPersonalBackup = () => {
       const bundled = candidates.find(candidate => fs.existsSync(candidate));
       if (bundled) await controller.configure({ ludusavi: bundled });
     }
+    // Cloud startup errors must not disable local backup.
+    try { await getOneDrive(controller); }
+    catch (error) { logger.warn("[OneDrive]", error); }
     return controller;
   });
   return instance;
@@ -65,7 +69,7 @@ export const startPersonalBackup = async () => {
 };
 
 export const stopPersonalBackup = async () => {
-  if (instance) await (await instance).stop();
+  if (instance) { await (await instance).stop(); await stopOneDrive(); }
 };
 
 export const onPersonalBackupGameClosed = (game: Game) => {

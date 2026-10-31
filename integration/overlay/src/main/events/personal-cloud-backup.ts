@@ -6,6 +6,8 @@ import { assertTrustedEpicSender } from "./epic/assert-trusted-sender";
 import { WindowManager } from "../services/window-manager";
 import { getPersonalBackup, restorePersonalBackup, recoverPersonalBackup } from "../services/personal-cloud-backup";
 
+import { getOneDrive, oneDriveCommand } from "../services/personal-cloud-backup/onedrive";
+
 const string = (value: unknown) => {
   if (typeof value !== "string" || !value || value.length > 1000) throw new Error("Permintaan backup tidak valid.");
   return value;
@@ -19,6 +21,26 @@ registerEvent("personalBackup", async (event, request: unknown) => {
   const parent = WindowManager.mainWindow;
   if (!parent) throw new Error("Jendela utama tidak tersedia.");
   const gameId = typeof input.gameId === "string" ? string(input.gameId) : undefined;
+  if (input.action === "cloud") {
+    const cloud = await getOneDrive(controller);
+    if (input.command === "snapshot") return cloud.snapshot(gameId);
+    return oneDriveCommand(async () => {
+      switch (input.command) {
+        case "login": await cloud.begin(string(input.clientId)); break;
+        case "open-login": await shell.openExternal("https://microsoft.com/devicelogin"); break;
+        case "disconnect": await cloud.disconnect(); break;
+        case "sync": await cloud.sync(gameId); break;
+        case "list": await cloud.list(string(gameId)); break;
+        case "download": {
+          const confirmation = await dialog.showMessageBox(parent, { type: "question", title: "Unduh versi OneDrive?", message: "Unduh ke riwayat backup lokal?", detail: "Save game belum diganti. Setelah selesai, pilih versi tersebut pada riwayat lokal dan konfirmasikan pemulihan.", buttons: ["Batal", "Unduh"], defaultId: 0, cancelId: 0, noLink: true });
+          if (confirmation.response === 1) await cloud.download(string(gameId), string(input.name));
+          break;
+        }
+        default: throw new Error("Perintah OneDrive tidak valid.");
+      }
+      return cloud.snapshot(gameId);
+    });
+  }
   switch (input.action) {
     case "open-save":
     case "open-backup": {

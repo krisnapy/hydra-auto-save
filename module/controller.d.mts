@@ -26,6 +26,7 @@ export interface BackupSnapshot {
 }
 export class BackupController {
   constructor(options: { stateDirectory: string; getGames: () => Promise<BackupGame[]>; assertStopped: (gameId: string) => Promise<void>; onError?: (error: unknown) => void; isBackground?: () => boolean; stableMs?: number; pollMs?: number; idlePollMs?: number; debounceMs?: number; fallbackMs?: number });
+  onBackupCompleted?: (engine: unknown, gameId: string, manifest: unknown) => Promise<void>;
   init(): Promise<this>;
   configure(values: { enabled?: boolean; destination?: string; ludusavi?: string; retention?: number; setupCompleted?: boolean }): Promise<void>;
   manual(gameId: string, selections: Array<{ path: string }>): Promise<void>;

@@ -103,3 +103,28 @@ test('hasil backup otomatis langsung menyegarkan jumlah versi', async ({ page })
   await expect(panel(page).getByRole('progressbar')).toHaveCount(0);
   await expect(panel(page).getByRole('button', { name: 'Pulihkan', exact: true })).toBeEnabled();
 });
+
+test('OneDrive login displays only the user code and can be cancelled', async ({ page }) => {
+  await visit(page, 'complete');
+  const cloud = page.getByLabel('OneDrive langsung');
+  await cloud.getByText('Atur koneksi OneDrive').click();
+  await cloud.getByLabel('Microsoft client ID').fill('11111111-2222-3333-4444-555555555555');
+  await cloud.getByRole('button', { name: 'Hubungkan OneDrive' }).click();
+  await expect(cloud.getByText('ABCD-EFGH', { exact: true })).toBeVisible();
+  await expect(cloud.getByRole('button', { name: 'Buka login Microsoft' })).toBeVisible();
+  await cloud.getByRole('button', { name: 'Batalkan login' }).click();
+  await expect(cloud.getByText('Belum terhubung', { exact: true })).toBeVisible();
+});
+
+test('OneDrive download enters local history without starting restore', async ({ page }) => {
+  await visit(page, 'complete');
+  await page.evaluate(() => window.visualFixture.connectCloud());
+  const cloud = page.getByLabel('OneDrive langsung');
+  await expect(cloud.getByText('Terhubung', { exact: true })).toBeVisible({ timeout: 8000 });
+  await cloud.getByRole('button', { name: 'Lihat versi OneDrive' }).click();
+  await cloud.getByRole('button', { name: 'Unduh ke riwayat' }).click();
+  await expect(cloud.getByText('Save belum diganti.', { exact: false })).toBeVisible();
+  const calls = await page.evaluate(() => window.visualFixture.calls);
+  expect(calls.some(call => call.command === 'download')).toBe(true);
+  expect(calls.some(call => call.action === 'restore')).toBe(false);
+});

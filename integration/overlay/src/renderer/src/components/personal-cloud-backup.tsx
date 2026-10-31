@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { BackupSnapshot, BackupProgress } from "../../../main/services/personal-cloud-backup/core/controller.mjs";
 import "./personal-cloud-backup.scss";
+import { PersonalOneDrive } from "./personal-onedrive";
+import type { CloudSnapshot } from "../../../main/services/personal-cloud-backup/core/cloud-sync.mjs";
 
 declare global {
   interface Window {
     personalBackup: {
+      invoke(request: { action: "cloud"; command: string; gameId?: string; [key: string]: unknown }): Promise<CloudSnapshot>;
       invoke(request: { action: "progress"; gameId?: string }): Promise<BackupProgress>;
       invoke(request: Record<string, unknown>): Promise<BackupSnapshot>;
     };
@@ -166,7 +169,8 @@ function GameBackupView({ snapshot, busy, opening, error, message, gameId, actio
         <p className="personal-backup__muted">Tutup game terlebih dahulu. Save saat ini akan dicadangkan sebelum diganti. Konfirmasi muncul setelah memilih versi.</p>
         <ul className="personal-backup__versions">{snapshot.versions.map(version => <li key={version.id}><div><strong>{backupDate(version.createdAt)}</strong><p>{version.files} file{version.safety ? " · Backup pengaman" : version.id === latest?.id ? " · Terbaru" : ""}</p></div><button disabled={blocked} onClick={() => void action("restore", { versionId: version.id })} aria-label={`Pulihkan versi ${new Date(version.createdAt).toLocaleString()}${version.safety ? " backup pengaman" : ""}`}>Pilih versi</button></li>)}</ul>
       </div>}
-      <p className="personal-backup__cloud-note">Folder sinkronisasi pribadi · Status unggahan cloud belum diverifikasi.</p>
+      <PersonalOneDrive gameId={gameId} onDownloaded={refresh} />
+      <p className="personal-backup__cloud-note">Backup lokal terpisah dari unggahan OneDrive. Folder sinkronisasi lain tetap dapat digunakan.</p>
     </div>
   </section>;
 }
@@ -241,7 +245,8 @@ export function PersonalCloudBackup({ gameId }: { gameId?: string }) {
   const showGuide = guideOpen || (!snapshot?.setup.completed && !guideDismissed);
   return <section className="personal-backup" aria-label="Personal Cloud Backup">
     <header><h3>Personal Cloud Backup</h3><span>Windows · Cloud pribadi</span></header>
-    <p>Backup disimpan ke folder sinkronisasi milik Anda. Aplikasi cloud menangani unggahan.</p>
+    <p>Backup disimpan ke folder lokal pilihan Anda. Hubungkan OneDrive untuk unggahan langsung, atau gunakan folder sinkronisasi aplikasi cloud.</p>
+    <PersonalOneDrive />
     {error && <p role="alert" className="personal-backup__error">{error}</p>}
     {message && <p role="status">{message}</p>}
     {busy && <p role="status">Permintaan sedang diproses. Jika ada operasi lain, permintaan menunggu giliran.</p>}

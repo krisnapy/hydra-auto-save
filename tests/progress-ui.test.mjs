@@ -18,7 +18,7 @@ test('progress panel polls serially, skips unchanged renders and sleeps while hi
     window: { personalBackup: { invoke: request => { assert.equal(request.action, 'progress'); calls++; return new Promise(done => { resolve = done; }); } } },
     setTimeout: (fn, delay) => { const id = ++timerId; timers.set(id, { fn, delay }); return id; },
     clearTimeout: id => timers.delete(id),
-    require: name => name === 'react' ? { useRef: value => ({ current: value }), useState: value => [value, update => updates.push(update)], useEffect: fn => effects.push(fn) } : name.endsWith('.scss') ? {} : require(name),
+    require: name => name === 'react' ? { useRef: value => ({ current: value }), useState: value => [value, update => updates.push(update)], useEffect: fn => effects.push(fn) } : (name.endsWith('.scss') || name === './personal-onedrive') ? {} : require(name),
   });
   exports.BackupProgressPanel({ gameId: 'game', busy: false, onCompleted: () => completions++ });
   const cleanup = effects[0]();

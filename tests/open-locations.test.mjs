@@ -18,6 +18,7 @@ async function harness({ file = false, missing = false, failure = '' } = {}) {
     './register-event': { registerEvent: (_, callback) => { handler = callback; } },
     './epic/assert-trusted-sender': { assertTrustedEpicSender: event => { if (!event.trusted) throw new Error('untrusted'); } },
     '../services/window-manager': { WindowManager: { mainWindow: {} } },
+    '../services/personal-cloud-backup/onedrive': {},
     '../services/personal-cloud-backup': { getPersonalBackup: async () => controller },
   };
   const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText;

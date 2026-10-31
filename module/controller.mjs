@@ -215,6 +215,7 @@ export class BackupController {
     try {
       const result = await this.engine.backup(gameId, config.roots, { reason });
       this.unstableRetries.delete(gameId);
+      await this.onBackupCompleted?.(this.engine, gameId, result);
       return result;
     }
     catch (error) { this.setStatus(gameId, error.code === 'SAVE_UNSTABLE' ? 'waiting' : 'failed', error.message); throw error; }
