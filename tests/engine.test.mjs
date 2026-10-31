@@ -230,3 +230,80 @@ test('tahap dan jumlah file dilaporkan untuk backup, backup pengaman, dan pemuli
   assert.equal(events.at(-1).phase, 'restore-cleanup');
   assert.equal(await fs.readFile(file, 'utf8'), 'level-1');
 });
+
+test('history cache avoids rereading unchanged blobs, coalesces snapshots, and fresh checks bypass it', async t => {
+  const { engine, roots, file } = await fixture(t);
+  await fs.writeFile(file, Buffer.alloc(8 * 1024 * 1024, 17));
+  await engine.backup('steam:cache', roots);
+  engine.historyCache.clear();
+  const before = { ...engine.historyCacheStats };
+  const results = await Promise.all([engine.versions('steam:cache'), engine.versions('steam:cache')]);
+  assert.equal(results[0].length, 1);
+  assert.equal(results[1].length, 1);
+  assert.equal(engine.historyCacheStats.filesHashed - before.filesHashed, 1);
+  const coldBytes = engine.historyCacheStats.bytesHashed - before.bytesHashed;
+  for (let i = 0; i < 20; i++) assert.equal((await engine.versions('steam:cache')).length, 1);
+  assert.equal(engine.historyCacheStats.bytesHashed - before.bytesHashed, coldBytes);
+  await engine.versions('steam:cache', { fresh: true });
+  assert.equal(engine.historyCacheStats.filesHashed - before.filesHashed, 2);
+  console.log(`History cache fixture: ${coldBytes} bytes hashed for initial listing; 0 additional payload bytes hashed across 20 unchanged listings.`);
+});
+
+test('history cache notices same-size corruption with restored mtime, missing blobs, and metadata changes', async t => {
+  const { engine, roots } = await fixture(t);
+  const version = await engine.backup('steam:cache', roots);
+  const folder = path.join(engine.directory('steam:cache'), version.id);
+  const blob = path.join(folder, 'data', version.files[0].hash);
+  const original = await fs.stat(blob);
+  await delay(10);
+  await fs.writeFile(blob, 'level-X');
+  await fs.utimes(blob, original.atime, original.mtime);
+  assert.deepEqual(await engine.versions('steam:cache'), []);
+  await fs.writeFile(blob, 'level-1');
+  assert.equal((await engine.versions('steam:cache')).length, 1);
+  await fs.rm(blob);
+  assert.deepEqual(await engine.versions('steam:cache'), []);
+  await fs.writeFile(blob, 'level-1');
+  assert.equal((await engine.versions('steam:cache')).length, 1);
+  await fs.writeFile(path.join(folder, 'COMPLETE'), 'invalid');
+  assert.deepEqual(await engine.versions('steam:cache'), []);
+});
+
+test('restore freshly verifies only the selected version even with a warm history cache', async t => {
+  const { engine, roots, file } = await fixture(t);
+  const version = await engine.backup('steam:cache', roots);
+  await fs.writeFile(file, 'new-progress');
+  await engine.backup('steam:cache', roots);
+  await engine.versions('steam:cache');
+  const calls = [];
+  const original = engine.versions.bind(engine);
+  engine.versions = async (gameId, options) => {
+    const before = engine.historyCacheStats.filesHashed;
+    const result = await original(gameId, options);
+    calls.push({ options, hashed: engine.historyCacheStats.filesHashed - before });
+    return result;
+  };
+  await engine.restore('steam:cache', roots, version.id, true);
+  assert.equal(calls[0].options.fresh, true);
+  assert.equal(calls[0].options.versionId, version.id);
+  assert.equal(calls[0].hashed, 1);
+  assert.equal(await fs.readFile(file, 'utf8'), 'level-1');
+});
+
+test('new corrupt backup cannot trigger retention even if older versions are cached', async t => {
+  const { engine, roots, file } = await fixture(t, { retention: 1 });
+  const old = await engine.backup('steam:cache', roots);
+  await fs.writeFile(file, 'next-level');
+  const original = engine.versions.bind(engine);
+  engine.versions = async (gameId, options) => {
+    if (options?.fresh && options.versionId !== old.id) {
+      const folder = path.join(engine.directory(gameId), options.versionId);
+      const manifest = JSON.parse(await fs.readFile(path.join(folder, 'manifest.json'), 'utf8'));
+      await fs.writeFile(path.join(folder, 'data', manifest.files[0].hash), 'broken');
+    }
+    return original(gameId, options);
+  };
+  await assert.rejects(engine.backup('steam:cache', roots), /riwayat lama dipertahankan/);
+  await fs.access(path.join(engine.directory('steam:cache'), old.id, 'COMPLETE'));
+  assert.deepEqual((await original('steam:cache', { fresh: true })).map(v => v.id), [old.id]);
+});

@@ -80,6 +80,12 @@ export class BackupEngine {
     this.onStatus = onStatus;
     this.onProgress = onProgress;
     this.jobs = new Map();
+    // Memory only: restart always revalidates cloud content. Bound the cache so
+    // large libraries cannot grow it indefinitely.
+    this.historyCache = new Map();
+    this.historyChecks = new Map();
+    this.historyCacheStats = { hits: 0, filesHashed: 0, bytesHashed: 0 };
+
   }
 
   directory(gameId) { return path.join(this.destination, 'HydraPersonalBackup', this.deviceId, digest(gameId)); }
@@ -147,13 +153,47 @@ export class BackupEngine {
     return file;
   }
 
-  async versions(gameId) {
+  async verifyHistoryBlob(blob, entry, fresh) {
+    await safePath(blob);
+    const signature = async () => {
+      const info = await fs.lstat(blob, { bigint: true });
+      if (!info.isFile() || info.size !== BigInt(entry.bytes)) throw new Error('Isi backup belum lengkap.');
+      return [info.dev, info.ino, info.size, info.mtimeNs, info.ctimeNs].join(':');
+    };
+    const before = await signature();
+    const key = `${before}:${entry.hash}`;
+    if (!fresh && this.historyCache.get(blob) === key) {
+      this.historyCache.delete(blob);
+      this.historyCache.set(blob, key);
+      this.historyCacheStats.hits++;
+      return;
+    }
+    // Concurrent UI snapshots share only a check of the same file identity.
+    // A restore's fresh check never trusts a prior result or pending UI check.
+    const pendingKey = `${blob}\0${key}`;
+    if (!fresh && this.historyChecks.has(pendingKey)) return this.historyChecks.get(pendingKey);
+    const check = (async () => {
+      this.historyCacheStats.filesHashed++;
+      this.historyCacheStats.bytesHashed += entry.bytes;
+      if (await hashFile(blob) !== entry.hash) throw new Error('Integritas backup gagal.');
+      if (await signature() !== before) throw new Error('Isi backup berubah saat diperiksa.');
+      this.historyCache.delete(blob);
+      this.historyCache.set(blob, key);
+      while (this.historyCache.size > 8192) this.historyCache.delete(this.historyCache.keys().next().value);
+    })();
+    if (!fresh) this.historyChecks.set(pendingKey, check);
+    try { await check; }
+    catch (error) { this.historyCache.delete(blob); throw error; }
+    finally { if (!fresh && this.historyChecks.get(pendingKey) === check) this.historyChecks.delete(pendingKey); }
+  }
+
+  async versions(gameId, { fresh = false, versionId } = {}) {
     const directory = this.directory(gameId);
     await safePath(directory);
     if (!await exists(directory)) return [];
     const versions = [];
     for (const name of await fs.readdir(directory)) {
-      if (!safeId(name) || name.startsWith('_')) continue;
+      if (!safeId(name) || name.startsWith('_') || (versionId && name !== versionId)) continue;
       const folder = path.join(directory, name);
       try {
         await safePath(folder);
@@ -164,10 +204,9 @@ export class BackupEngine {
         if (manifest.schema !== 1 || manifest.gameId !== gameId || manifest.deviceId !== this.deviceId || manifest.id !== name) continue;
         // Do not offer partially downloaded/corrupt cloud versions for restoration.
         for (const entry of manifest.files) {
-          if (!/^[a-f0-9]{64}$/.test(entry.hash)) throw new Error('Hash tidak valid.');
+          if (!/^[a-f0-9]{64}$/.test(entry.hash) || !Number.isSafeInteger(entry.bytes) || entry.bytes < 0) throw new Error('Metadata file tidak valid.');
           const blob = path.join(folder, 'data', entry.hash);
-          await safePath(blob);
-          if (await hashFile(blob) !== entry.hash) throw new Error('Integritas backup gagal.');
+          await this.verifyHistoryBlob(blob, entry, fresh);
         }
         versions.push(manifest);
       } catch { /* Missing or incomplete cloud files are not restorable versions. */ }
@@ -225,6 +264,8 @@ export class BackupEngine {
       // Only this device's completed normal versions count toward retention.
       // Safety copies are pinned and never automatically pruned.
       report('retention');
+      // Never prune old versions based solely on cached verification.
+      if (!(await this.versions(gameId, { fresh: true, versionId: id })).length) throw new Error('Backup baru gagal pemeriksaan integritas; riwayat lama dipertahankan.');
       for (const old of (await this.versions(gameId)).filter(version => !version.safety).slice(this.retention)) {
         await fs.rm(path.join(directory, old.id), { recursive: true, force: true });
       }
@@ -246,7 +287,7 @@ export class BackupEngine {
       await this.assertStopped(gameId);
       const journal = path.join(this.stateDirectory, `${digest(gameId)}-restore.json`);
       if (await exists(journal)) throw new Error(`Pemulihan sebelumnya terputus. Periksa catatan pemulihan: ${journal}`);
-      const manifest = (await this.versions(gameId)).find(version => version.id === versionId);
+      const manifest = (await this.versions(gameId, { fresh: true, versionId })).find(version => version.id === versionId);
       if (!manifest) throw new Error('Versi tidak tersedia, belum lengkap, atau gagal pemeriksaan integritas.');
       const configured = new Map(roots.map(root => [root.id, root]));
       const recorded = new Map(manifest.roots.map(root => [root.id, root]));

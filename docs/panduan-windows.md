@@ -47,3 +47,9 @@ Tray tetap memerlukan proses utama Hydra dan layanan yang sedang dipakai, termas
 Pada halaman game → Personal Cloud Backup, klik **Buka lokasi save** di samping lokasi yang ingin dilihat. Jika lokasi berupa file, File Explorer membuka folder induknya dan menyorot file tersebut. Untuk beberapa lokasi save, tersedia tombol pada setiap lokasi.
 
 Klik **Buka lokasi backup** untuk membuka folder backup game pada perangkat ini. Pada Settings → Personal Cloud Backup, tombol yang sama membuka folder tujuan utama. Folder game tersedia setelah backup pertama dibuat. Jika lokasi save dihapus atau folder cloud tidak tersedia, aplikasi menampilkan alasan; tombol ini tidak membuat atau memulihkan save. Backup memakai struktur internal aplikasi; gunakan tombol **Pulihkan** untuk mengembalikan progres.
+
+## Riwayat lebih ringan (0.1.5)
+
+Aplikasi memakai hasil pemeriksaan file backup yang belum berubah agar pembaruan riwayat tidak membaca ulang seluruh isinya. Cache hilang ketika aplikasi ditutup. Pemeriksaan pertama setelah membuka aplikasi masih dapat membaca backup dari folder cloud.
+
+Sebelum pemulihan, isi versi yang dipilih tetap diperiksa ulang sepenuhnya. Backup baru juga diperiksa ulang sebelum versi lama dihapus sesuai batas riwayat. Format dan lokasi backup tidak berubah; backup lama tetap dapat digunakan. Pembaruan ini mengurangi pembacaan isi backup berulang, bukan ukuran installer atau ukuran riwayat.
