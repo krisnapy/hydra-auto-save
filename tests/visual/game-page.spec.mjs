@@ -36,6 +36,11 @@ for (const scenario of cases) test(`tampilan ${scenario}`, async ({ page }, info
   }
   if (scenario === 'error') await expect(section.getByRole('alert').first()).toBeVisible();
   expect(await section.evaluate(element => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
+  const context = await section.locator('.personal-backup__context').boundingBox();
+  const card = await section.locator('.personal-backup__card').boundingBox();
+  expect(card.y).toBeGreaterThanOrEqual(context.y + context.height);
+  expect(Math.abs(card.x - context.x)).toBeLessThanOrEqual(1);
+  expect(Math.abs(card.width - context.width)).toBeLessThanOrEqual(1);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   const overflow = await section.locator('button').evaluateAll(buttons => buttons.some(button => button.scrollWidth > button.clientWidth + 2));
   expect(overflow).toBe(false);
@@ -107,10 +112,12 @@ test('hasil backup otomatis langsung menyegarkan jumlah versi', async ({ page })
 test('OneDrive login displays only the user code and can be cancelled', async ({ page }) => {
   await visit(page, 'complete');
   const cloud = page.getByLabel('OneDrive langsung');
-  await cloud.getByText('Pengaturan koneksi OneDrive').click();
-  await cloud.getByLabel('Microsoft client ID').fill('11111111-2222-3333-4444-555555555555');
+  await expect(cloud.getByRole('textbox')).toHaveCount(0);
+  await expect(cloud).not.toContainText('11111111-2222-3333-4444-555555555555');
   await cloud.getByRole('button', { name: 'Hubungkan OneDrive' }).click();
+  expect(await page.evaluate(() => window.visualFixture.calls.find(call => call.command === 'login'))).toMatchObject({ clientId: '11111111-2222-3333-4444-555555555555' });
   await expect(cloud.getByText('ABCD-EFGH', { exact: true })).toBeVisible();
+  await expect(cloud).toContainText('https://www.microsoft.com/link');
   await expect(cloud.getByRole('button', { name: 'Buka login Microsoft' })).toBeVisible();
   await cloud.getByRole('button', { name: 'Batalkan login' }).click();
   await expect(cloud.getByText('Belum terhubung', { exact: true })).toBeVisible();

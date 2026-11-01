@@ -27,7 +27,9 @@ export class OneDrive {
     if (!validClientId(this.clientId)) throw new Error('Masukkan Application (client) ID Microsoft terlebih dahulu.');
     const value = await this.oauth('devicecode', { scope: SCOPE });
     if (typeof value.device_code !== 'string' || typeof value.user_code !== 'string' || !Number.isFinite(value.expires_in) || value.expires_in <= 0 || value.expires_in > 1800) throw new Error('Jawaban login Microsoft tidak valid.');
-    return { code: value.device_code, userCode: value.user_code, expiresAt: Date.now() + value.expires_in * 1000, interval: Math.max(5, Math.min(60, Number(value.interval) || 5)) * 1000 };
+    const loginUrls = ['https://www.microsoft.com/link', 'https://microsoft.com/link', 'https://www.microsoft.com/devicelogin', 'https://microsoft.com/devicelogin'];
+    if (!loginUrls.includes(value.verification_uri)) throw new Error('Alamat login Microsoft tidak dikenali. Mulai login kembali.');
+    return { code: value.device_code, userCode: value.user_code, url: value.verification_uri, expiresAt: Date.now() + value.expires_in * 1000, interval: Math.max(5, Math.min(60, Number(value.interval) || 5)) * 1000 };
   }
   async completeLogin(code) {
     const value = await this.oauth('token', { grant_type: 'urn:ietf:params:oauth:grant-type:device_code', device_code: code });

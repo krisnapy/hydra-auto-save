@@ -3,7 +3,6 @@ import type { CloudSnapshot } from "../../../main/services/personal-cloud-backup
 
 export function PersonalOneDrive({ gameId, onDownloaded }: { gameId?: string; onDownloaded?: () => void }) {
   const [cloud, setCloud] = useState<CloudSnapshot>();
-  const [clientId, setClientId] = useState<string>();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -45,14 +44,12 @@ export function PersonalOneDrive({ gameId, onDownloaded }: { gameId?: string; on
   return <div className="personal-backup__onedrive" aria-label="OneDrive langsung">
     <div className="personal-backup__history-heading"><h4>OneDrive</h4><span>{cloud.connected ? "Terhubung" : cloud.login ? "Menunggu login" : "Belum terhubung"}</span></div>
     {!cloud.connected && !cloud.login && <>
-      <button disabled={busy || !(clientId ?? cloud.clientId)} onClick={() => void command("login", { clientId: clientId ?? cloud.clientId })}>Hubungkan OneDrive</button>
-      <details><summary>Pengaturan koneksi OneDrive</summary>
       <p>Hubungkan akun pribadi Microsoft untuk mengunggah backup langsung dari Hydra.</p>
-      <label>Application (client) ID <input aria-label="Microsoft client ID" value={clientId ?? cloud.clientId} disabled={busy} placeholder="ID pendaftaran aplikasi Microsoft" onChange={event => setClientId(event.target.value)} /></label>
-      <p className="personal-backup__muted">Client ID bawaan sudah disediakan. Ubah hanya untuk memakai pendaftaran aplikasi Microsoft Anda sendiri.</p>
-    </details></>}
+      <button disabled={busy || !cloud.clientId} onClick={() => void command("login", { clientId: cloud.clientId })}>Hubungkan OneDrive</button>
+      {!cloud.clientId && <p role="status">Koneksi OneDrive belum tersedia pada build ini. Gunakan folder sinkronisasi lokal atau pasang versi dengan dukungan OneDrive.</p>}
+    </>}
     {cloud.login && <>
-      <p>Masukkan kode <strong className="personal-backup__login-code">{cloud.login.userCode}</strong> di microsoft.com/devicelogin. Gunakan hanya kode yang Anda mulai dari Hydra ini.</p>
+      <p>Masukkan kode <strong className="personal-backup__login-code">{cloud.login.userCode}</strong> di {cloud.login.url}. Gunakan hanya kode yang Anda mulai dari Hydra ini.</p>
       <p>Berlaku sampai {new Date(cloud.login.expiresAt).toLocaleTimeString()}. Status login diperiksa otomatis.</p>
       <button disabled={busy} onClick={() => void command("open-login")}>Buka login Microsoft</button>
     </>}

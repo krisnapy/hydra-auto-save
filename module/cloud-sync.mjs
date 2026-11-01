@@ -34,7 +34,7 @@ export class CloudSync {
   }
   snapshot(gameId) {
     const jobs = this.state.jobs.filter(j => (!gameId || j.gameId === gameId) && j.driveId === this.state.driveId);
-    return { provider: 'onedrive', clientId: this.state.clientId, connected: this.connected, login: this.login ? { userCode: this.login.userCode, expiresAt: this.login.expiresAt, url: 'https://microsoft.com/devicelogin' } : null,
+    return { provider: 'onedrive', clientId: this.state.clientId, connected: this.connected, login: this.login ? { userCode: this.login.userCode, expiresAt: this.login.expiresAt, url: this.login.url } : null,
       pending: jobs.filter(j => !j.uploadedAt).length, uploaded: jobs.filter(j => j.uploadedAt).length,
       uploading: jobs.some(j => j.name === this.uploading), error: this.error, lastUploadedAt: jobs.filter(j => j.uploadedAt).map(j => j.uploadedAt).sort().at(-1),
       versions: this.remote.get(gameId)?.map(item => ({ name: item.name, modifiedAt: item.lastModifiedDateTime, size: item.size })) ?? [] };

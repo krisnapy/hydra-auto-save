@@ -27,7 +27,12 @@ registerEvent("personalBackup", async (event, request: unknown) => {
     return oneDriveCommand(async () => {
       switch (input.command) {
         case "login": await cloud.begin(string(input.clientId)); break;
-        case "open-login": await shell.openExternal("https://microsoft.com/devicelogin"); break;
+        case "open-login": {
+          const login = cloud.snapshot().login;
+          if (!login || login.expiresAt <= Date.now()) throw new Error("Kode login Microsoft tidak aktif atau kedaluwarsa. Mulai login kembali.");
+          await shell.openExternal(login.url);
+          break;
+        }
         case "disconnect": await cloud.disconnect(); break;
         case "sync": await cloud.sync(gameId); break;
         case "list": await cloud.list(string(gameId)); break;

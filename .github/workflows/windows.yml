@@ -5,7 +5,9 @@ on:
     branches: [main]
     # Ordinary source changes use the quick workflow. Changes to packaging itself
     # also exercise both distributables and the downstream portable verification.
+    # A release version change builds and verifies the distributables as well.
     paths:
+      - 'package.json'
       - '.github/workflows/windows.yml'
       - '.github/workflows/windows-build.yml'
       - 'integration/windows-builder.cjs'

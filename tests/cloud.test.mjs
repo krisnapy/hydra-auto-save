@@ -87,8 +87,9 @@ test('outbox retries offline, survives restart and never uploads old jobs to a d
 
 test('device login handles pending and slow_down without exposing device code or tokens; disconnect drains work', async t => {
   const f = await fixture(t); await f.cloud.disconnect();
-  f.cloud.provider.beginLogin = async () => ({ code: 'PRIVATE-DEVICE-CODE', userCode: 'USER-CODE', expiresAt: Date.now() + 900000, interval: 5000 });
+  f.cloud.provider.beginLogin = async () => ({ code: 'PRIVATE-DEVICE-CODE', userCode: 'USER-CODE', url: 'https://www.microsoft.com/link', expiresAt: Date.now() + 900000, interval: 5000 });
   await f.cloud.begin(clientId);
+  assert.equal(f.cloud.snapshot().login.url, 'https://www.microsoft.com/link');
   assert.equal(JSON.stringify(f.cloud.snapshot()).includes('PRIVATE-DEVICE-CODE'), false);
   let attempts = 0;
   f.cloud.provider.completeLogin = async () => {
@@ -102,6 +103,24 @@ test('device login handles pending and slow_down without exposing device code or
   assert.equal(JSON.stringify(f.cloud.snapshot()).includes('PRIVATE-'), false);
   await f.cloud.disconnect(); assert.equal(await f.vault.load(), null);
   assert.equal(f.cloud.snapshot().connected, false);
+});
+
+test('device login preserves the Microsoft verification URL and rejects unexpected login destinations', async () => {
+  let verificationUri = 'https://www.microsoft.com/link';
+  const provider = new OneDrive({ clientId, loadTokens: async () => null, saveTokens: async () => {}, fetcher: async (url, options) => {
+    assert.equal(url, 'https://login.microsoftonline.com/consumers/oauth2/v2.0/devicecode');
+    assert.equal(options.body.get('client_id'), clientId);
+    return Response.json({ device_code: 'PRIVATE-DEVICE-CODE', user_code: 'USER-CODE', verification_uri: verificationUri, expires_in: 900, interval: 5 });
+  } });
+  const login = await provider.beginLogin();
+  assert.equal(login.url, verificationUri);
+  assert.equal(login.userCode, 'USER-CODE');
+  assert.equal(login.code, 'PRIVATE-DEVICE-CODE');
+  assert.equal(login.interval, 5000);
+  for (const invalid of ['https://www.microsoft.com.evil.example/link', 'http://www.microsoft.com/link', 'https://www.microsoft.com/link?redirect=evil', undefined]) {
+    verificationUri = invalid;
+    await assert.rejects(provider.beginLogin(), /Alamat login Microsoft tidak dikenali/);
+  }
 });
 
 test('OneDrive refresh rotates tokens once, restricts scope and sanitizes provider errors', async () => {

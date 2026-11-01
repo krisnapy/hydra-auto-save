@@ -15,7 +15,7 @@
   p, li { line-height: 1.6; }
   header span, &__note { opacity: 0.7; font-size: 12px; }
   &__locations { list-style: none; padding-left: 0 !important; li { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 10px; flex-wrap: wrap; } }
-  &__row { flex-wrap: wrap; }
+  &__row { flex-direction: column; align-items: flex-start; }
   &__actions { display: flex; gap: 8px; flex-wrap: wrap; }
   &__toggle { display: flex; align-items: center; gap: 10px; }
   &__progress { border: 1px solid rgba(158,200,255,.35); border-radius: 8px; padding: 14px; display: flex; flex-direction: column; gap: 14px; }
@@ -42,17 +42,17 @@
 
 .personal-backup--game {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(300px, 1.1fr);
+  grid-template-columns: minmax(0, 1fr);
   align-items: start;
-  gap: 28px;
+  gap: 16px;
   padding: 8px 0;
   border: 0;
   background: transparent;
-  .personal-backup__context { display: flex; flex-direction: column; gap: 10px; padding: 14px 0; min-width: 0; }
+  .personal-backup__context { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
   .personal-backup__eyebrow { font-size: 11px; letter-spacing: 1.4px; opacity: .6; }
   .personal-backup__context > h3 { font-size: 20px; font-weight: 600; }
   .personal-backup__muted { opacity: .72; font-size: 12px; }
-  .personal-backup__folder-group { margin-top: 18px; display: grid; gap: 12px; }
+  .personal-backup__folder-group { margin-top: 6px; display: grid; gap: 12px; }
   .personal-backup__folder { display: flex; align-items: flex-start; flex-direction: column; gap: 8px; font-size: 13px; }
   .personal-backup__folder button { font-size: 12px; }
   .personal-backup__details { margin-top: 12px; font-size: 12px; }
@@ -89,7 +89,6 @@
   .personal-backup__versions li { gap: 12px; }
   .personal-backup__versions strong { font-weight: 500; }
   .personal-backup__versions button { flex-shrink: 0; font-size: 12px; padding: 7px 10px; }
-  @media (max-width: 1100px) { grid-template-columns: minmax(0, 1fr); gap: 12px; .personal-backup__context { padding: 0; } .personal-backup__folder-group { margin-top: 6px; } }
 }
 
 .personal-backup__onedrive { margin-top: 18px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,.1); display: grid; gap: 10px; min-width: 0; }

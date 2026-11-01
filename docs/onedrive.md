@@ -1,17 +1,17 @@
-# OneDrive langsung — 0.3.0
+# OneDrive langsung — 0.3.1
 
 Tahap awal untuk OneDrive akun Microsoft pribadi. Folder sinkronisasi lokal lama tetap dapat dipakai tanpa login. Ludusavi tetap digunakan untuk deteksi lokasi save; achievement dan pemulihan antar-PC belum termasuk tahap ini.
 
 ## Pendaftaran sekali oleh pengelola proyek
 
-Pendaftaran aplikasi tidak perlu dilakukan oleh setiap pengguna. Paket menyertakan client ID proyek bawaan; pengguna cukup menekan Hubungkan OneDrive. Kolom client ID pada Pengaturan koneksi hanya diperlukan bila ingin memakai pendaftaran lain. ID ini bukan rahasia. Jangan membuat atau membagikan client secret.
+Pendaftaran aplikasi tidak perlu dilakukan oleh setiap pengguna. Paket menyertakan client ID proyek bawaan; pengguna cukup menekan Hubungkan OneDrive. Client ID tidak ditampilkan atau dimasukkan oleh pengguna pada UI. ID ini bukan rahasia. Jangan membuat atau membagikan client secret.
 
 1. Buka https://entra.microsoft.com/ dan pilih direktori/tenant Anda.
 2. App registrations → New registration. Nama: Hydra Personal Backup. Supported account types: Personal Microsoft accounts only. Redirect URI dikosongkan.
 3. Authentication → Advanced settings → Allow public client flows: Yes. Jika tidak terlihat, buka Manifest (Microsoft Graph), ubah `isFallbackPublicClient` menjadi `true`, lalu Save. Login menggunakan OAuth device authorization, sehingga tidak memerlukan server callback/redirect URI.
 4. API permissions → Microsoft Graph → Delegated permissions → Files.ReadWrite.AppFolder. Hapus User.Read bawaan bila tidak digunakan. Aplikasi meminta scope AppFolder dan offline_access, tanpa akses seluruh drive.
 5. Overview → salin Application (client) ID. Tenant ID berbeda dan tidak digunakan endpoint consumers untuk akun pribadi.
-6. Client ID proyek sudah tersedia di Settings Personal Cloud Backup → OneDrive. Untuk pendaftaran lain, buka Pengaturan koneksi dan masukkan client ID. Pilih Hubungkan OneDrive, lalu Buka login Microsoft. Masukkan kode yang ditampilkan Hydra, login, periksa nama aplikasi dan persetujuan. Kode berakhir sesuai waktu Microsoft dan dapat dibatalkan.
+6. Client ID disediakan melalui konfigurasi build. Di Settings Personal Cloud Backup → OneDrive pilih Hubungkan OneDrive, lalu Buka login Microsoft. Masukkan kode yang ditampilkan Hydra, login, periksa nama aplikasi dan persetujuan. Kode berakhir sesuai waktu Microsoft dan dapat dibatalkan. Sejak 0.3.1 halaman login mengikuti verification_uri respons Microsoft (akun pribadi saat pemeriksaan: https://www.microsoft.com/link). Jika 0.3.0 menolak kode di devicelogin, batalkan login, minta kode baru lalu buka https://www.microsoft.com/link secara manual.
 
 Rujukan: [pendaftaran aplikasi](https://learn.microsoft.com/en-us/graph/auth-register-app-v2), [device authorization](https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-device-code), [folder khusus aplikasi](https://learn.microsoft.com/en-us/graph/onedrive-sharepoint-appfolder). Microsoft menyediakan [Entra ID Free](https://learn.microsoft.com/en-us/azure/cost-management-billing/manage/microsoft-entra-id-free); akses tenant/pendaftaran Azure tetap mengikuti persyaratan akun Microsoft.
 
@@ -46,4 +46,4 @@ Nilai `HYDRA_ONEDRIVE_CLIENT_ID` disimpan di `.env` lokal (izin600, diabaikan re
 
 Pemasang sumber membaca hanya variabel client ID dan menanamkan pengenal publik itu ke modul hasil build. File `.env`, nilai konfigurasi lain, client secret, serta token akun tidak disalin ke aplikasi. Client ID tetap dapat ditemukan pada installer: desktop OAuth membutuhkan pengenal ini dan tidak dapat menjadikannya rahasia. Token per pengguna tetap disimpan terlindungi Windows, bukan dikirim ke GitHub Secrets.
 
-Plugin GitHub saat implementasi tidak menyediakan penulisan Secrets, sehingga pengelola harus membuat Repository Secret melalui Settings → Secrets and variables → Actions. Pengguna mengonfirmasi secret telah disimpan; CI membuktikan variabel wajib tersedia dan lolos validasi ID saat integrasi. Nilainya tidak dicetak. Repository tetap privat. ID proyek pernah terdapat dalam commit privat sebelum konfigurasi dipindahkan; sumber terbaru menghapusnya, tetapi riwayat tersebut tidak ditulis ulang.
+Plugin GitHub saat implementasi tidak menyediakan penulisan Secrets, sehingga pengelola harus membuat Repository Secret melalui Settings → Secrets and variables → Actions. Pengguna mengonfirmasi secret telah disimpan; CI membuktikan variabel wajib tersedia dan lolos validasi ID saat integrasi. Nilainya tidak dicetak. Visibilitas repository ditentukan terpisah pada GitHub; pemeriksaan terbaru menunjukkan repo publik. ID proyek pernah terdapat dalam commit privat sebelum konfigurasi dipindahkan; sumber terbaru menghapusnya, tetapi riwayat tersebut tidak ditulis ulang.

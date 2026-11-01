@@ -37,7 +37,7 @@ const invoke = async (request: Record<string, unknown>) => {
   calls.push(request);
   if (request.gameId !== gameId) throw new Error("UI meminta game di luar fixture.");
   if (request.action === "cloud") {
-    if (request.command === "login") cloudState.login = { userCode: "ABCD-EFGH", expiresAt: Date.now() + 900000, url: "https://microsoft.com/devicelogin" };
+    if (request.command === "login") cloudState.login = { userCode: "ABCD-EFGH", expiresAt: Date.now() + 900000, url: "https://www.microsoft.com/link" };
     if (request.command === "disconnect") { cloudState.connected = false; cloudState.login = null; }
     if (request.command === "list") cloudState.versions = [{ name: "fixture-package.hpb", modifiedAt: at, size: 1024 }];
     if (request.command === "download") current.versions = [version("downloaded")];
