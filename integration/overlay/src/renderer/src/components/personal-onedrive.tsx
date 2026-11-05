@@ -36,6 +36,7 @@ export function PersonalOneDrive({ gameId, onDownloaded }: { gameId?: string; on
       if (mounted.current) {
         setCloud(result);
         if (name === "download") { onDownloaded?.(); setMessage("Periksa riwayat lokal untuk memilih versi dan mengonfirmasi pemulihan. Save belum diganti."); }
+        if (name === "optimize") setMessage(result.notice || "Pemeriksaan optimisasi cloud selesai.");
       }
     } catch (failure) { if (mounted.current) setError(String(failure)); }
     finally { actionRunning.current = false; if (mounted.current) setBusy(false); }
@@ -57,8 +58,10 @@ export function PersonalOneDrive({ gameId, onDownloaded }: { gameId?: string; on
       <p role="status">{cloud.uploading ? "Mengunggah ke OneDrive…" : cloud.pending ? `${cloud.pending} backup menunggu unggahan` : "Antrean unggahan kosong"}</p>
       {cloud.lastUploadedAt && <p>Unggahan terverifikasi terakhir: {new Date(cloud.lastUploadedAt).toLocaleString()}</p>}
       <div className="personal-backup__actions"><button disabled={busy} onClick={() => void command("sync")}>Unggah backup terbaru / coba lagi</button>{gameId && <button disabled={busy} onClick={() => void command("list")}>Lihat versi OneDrive</button>}</div>
+      <button disabled={busy || cloud.uploading} onClick={() => void command("optimize")}>Optimalkan backup cloud</button>
+      <p className="personal-backup__muted">Periksa paket lalu pilih apakah versi lama dipindahkan ke Recycle Bin OneDrive sesuai batas riwayat lokal. Backup pengaman dan PC lain dipertahankan. Pemeriksaan memerlukan unduhan paket.</p>
       {cloud.versions.length > 0 && <ul className="personal-backup__versions">{cloud.versions.map(version => <li key={version.name}><div><strong>{new Date(version.modifiedAt).toLocaleString()}</strong><p>{(version.size / 1024 ** 2).toFixed(2)} MiB · perangkat ini</p></div><button disabled={busy} onClick={() => void command("download", { name: version.name })}>Unduh ke riwayat</button></li>)}</ul>}
-      <p className="personal-backup__muted">Versi 0.3: maksimal 32 MiB save per versi, perangkat ini saja. Unduhan masuk riwayat lokal; pemulihan tetap perlu dipilih dan dikonfirmasi. Riwayat cloud belum dihapus otomatis.</p>
+      <p className="personal-backup__muted">Versi 0.3: maksimal 32 MiB save per versi, perangkat ini saja. Unduhan masuk riwayat lokal; pemulihan tetap perlu dipilih dan dikonfirmasi. Pembersihan cloud hanya berjalan setelah konfirmasi optimisasi.</p>
     </>}
     {(cloud.connected || cloud.login) && <button disabled={busy} onClick={() => void command("disconnect")}>{cloud.login ? "Batalkan login" : "Putuskan koneksi"}</button>}
     {busy && <p role="status">Memproses permintaan OneDrive…</p>}

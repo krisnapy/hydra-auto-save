@@ -25,7 +25,15 @@ registerEvent("personalBackup", async (event, request: unknown) => {
     const cloud = await getOneDrive(controller);
     if (input.command === "snapshot") return cloud.snapshot(gameId);
     return oneDriveCommand(async () => {
+      let notice: string | undefined;
       switch (input.command) {
+        case "optimize": {
+          const plan = await cloud.planOptimization(gameId);
+          if (!plan.remove) { notice = "Tidak ada versi cloud lama yang dapat dibersihkan. Backup pengaman dan paket yang belum dapat diverifikasi tetap dipertahankan."; break; }
+          const confirmation = await dialog.showMessageBox(parent, { type: "warning", title: "Optimalkan backup cloud?", message: `Pindahkan ${plan.remove} paket versi lama ke Recycle Bin OneDrive?`, detail: `Ukuran paket: ${(plan.removableBytes / 1024 ** 2).toFixed(2)} MiB. Pertahankan ${plan.retention} versi normal terbaru per game pada perangkat ini serta semua backup pengaman. ${plan.protectedCount} paket dilindungi atau belum dapat diverifikasi. Backup PC lain dan file di luar folder aplikasi tidak disentuh. Pemeriksaan paket memerlukan unduhan. Kuota tersedia mengikuti pembaruan OneDrive.`, buttons: ["Batal", "Optimalkan cloud"], defaultId: 0, cancelId: 0, noLink: true });
+          notice = confirmation.response === 1 ? (await cloud.optimize(plan.token, gameId)).detail : "Optimisasi cloud dibatalkan.";
+          break;
+        }
         case "login": await cloud.begin(string(input.clientId)); break;
         case "open-login": {
           const login = cloud.snapshot().login;
@@ -43,13 +51,21 @@ registerEvent("personalBackup", async (event, request: unknown) => {
         }
         default: throw new Error("Perintah OneDrive tidak valid.");
       }
-      return cloud.snapshot(gameId);
+      return { ...cloud.snapshot(gameId), notice };
     });
   }
   switch (input.action) {
+    case "optimize": {
+      const plan = await controller.planOptimization(gameId);
+      if (!plan.compress && !plan.remove) return { ...await controller.snapshot(gameId), notice: "Backup lokal sudah optimal. Tidak ada versi yang perlu diproses." };
+      const confirmation = await dialog.showMessageBox(parent, { type: "warning", title: "Optimalkan backup lokal?", message: `Kompresi ${plan.compress} versi dan hapus ${plan.remove} versi lama?`, detail: `Versi lama di luar batas riwayat mencakup ${(plan.removableBytes / 1024 ** 2).toFixed(2)} MiB data. Penghematan kompresi baru diketahui setelah selesai. Pertahankan ${plan.retention} versi normal terbaru per game dan semua backup pengaman. Proses memerlukan ruang sementara; backup asli dipertahankan sampai hasil terverifikasi. Backup terkompresi membutuhkan aplikasi baru ini untuk pemulihan. Save game dan perangkat lain tidak diubah.`, buttons: ["Batal", "Optimalkan lokal"], defaultId: 0, cancelId: 0, noLink: true });
+      const notice = confirmation.response === 1 ? (await controller.optimize(plan.token, gameId)).detail : "Optimisasi lokal dibatalkan.";
+      return { ...await controller.snapshot(gameId), notice };
+    }
     case "open-save":
     case "open-backup": {
       // Resolve only saved configuration; never accept a renderer-supplied path.
+      if (input.action === "open-backup") await controller.refreshCatalog();
       const snapshot = await controller.snapshot(gameId, true);
       const root = input.action === "open-save" ? snapshot.roots.find(item => item.id === string(input.rootId)) : undefined;
       if (input.action === "open-save" && !root) throw new Error("Lokasi save belum diatur atau sudah berubah. Deteksi ulang lokasi save.");

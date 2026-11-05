@@ -1,12 +1,14 @@
-# Hydra Personal Cloud Backup — 0.3.1
+# Hydra Personal Cloud Backup — 0.3.2
 
 Implementasi awal modul backup untuk salinan kode **Hydra Launcher 4.3.0 di Windows**. Tersedia installer dan aplikasi portable Windows x64 dengan runtime serta Ludusavi bawaan. Build, pemeriksaan tipe seluruh Hydra, dan uji membuka aplikasi/pengaturan backup di Windows telah berhasil. Pengujian game nyata dan penyedia cloud masih diperlukan.
 
 Draft awal tetap tersedia di [docs/rancangan-auto-backup.md](docs/rancangan-auto-backup.md). Keputusan implementasi awal dan batas verifikasi tercatat di [docs/implementasi.md](docs/implementasi.md). Tahapan berikutnya ada di [roadmap Personal Cloud](docs/roadmap-personal-cloud.md).
 
+Perubahan 0.3.2: [optimisasi alur dan ukuran backup](docs/optimisasi-penyimpanan.md), meliputi kompresi adaptif, penggunaan ulang isi backup terverifikasi dan pencegahan pengemasan unggahan duplikat. Tombol **Optimalkan backup lokal** dan **Optimalkan backup cloud** memeriksa riwayat dan meminta konfirmasi sebelum memproses versi lama. Backup terkompresi baru memerlukan pembaca lokal baru; backup lama dan transport `.hpb` tetap didukung.
+
 ## Paket Windows tanpa Node.js
 
-Rilis publik tersedia pada [halaman Releases](https://github.com/krisnapy/hydra-auto-save/releases). Pilih installer `setup.exe` atau `portable.exe`; unduhan Releases tidak memerlukan login GitHub. Rilis 0.3.1 diterbitkan setelah pemeriksaan Windows berhasil; selama proses berjalan gunakan rilis yang telah tersedia. Rilis lama tetap dipertahankan.
+Rilis publik tersedia pada [halaman Releases](https://github.com/krisnapy/hydra-auto-save/releases). Pilih installer `setup.exe` atau `portable.exe`; unduhan Releases tidak memerlukan login GitHub. Paket 0.3.2 dipublikasikan setelah pemeriksaan Windows berhasil; selama proses berjalan gunakan rilis yang telah tersedia. Rilis lama tetap dipertahankan.
 
 0.3.1 memperbaiki alamat login OneDrive dengan mengikuti respons Microsoft, menyusun Personal Cloud menjadi satu kolom, serta menyembunyikan input Client ID. Tombol Hubungkan OneDrive memakai konfigurasi bawaan/tersimpan.
 
@@ -31,6 +33,7 @@ Panduan pengguna: [panduan Windows](docs/panduan-windows.md). Tutup Hydra resmi 
 - Pemilihan file atau folder save manual melalui dialog Windows.
 - Buka folder save membuka folder penyimpanan. Beberapa file dalam folder yang sama dikelompokkan menjadi satu lokasi; folder terpisah tetap tersedia masing-masing.
 - Backup ke folder sinkronisasi lokal, dengan identitas perangkat tersendiri.
+- Folder tujuan dilengkapi `DAFTAR GAME - <perangkat>.txt` yang memetakan nama game ke folder backup. Setiap folder game memiliki `_INFO GAME.txt` berisi nama game, ID, dan lokasi save. Keterangan diperbarui saat aplikasi dibuka, backup baru berhasil, atau **Buka folder backup** dipilih; backup lama yang masih terdaftar di profil ikut diberi keterangan. Nama folder internal tetap dipertahankan agar riwayat dan pemulihan kompatibel. Ini keterangan backup lokal, bukan perubahan nama paket `.hpb` di OneDrive.
 - SHA-256 untuk membandingkan isi dan memeriksa integritas. Isi yang sama tidak membuat versi normal baru.
 - Riwayat awal 10 versi normal per game **per perangkat**. Backup pengaman sebelum pemulihan tidak dihapus otomatis.
 - Penanda selesai dan pemeriksaan kelengkapan sebelum versi ditampilkan untuk pemulihan.

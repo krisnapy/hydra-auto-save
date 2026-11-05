@@ -27,13 +27,13 @@ try {
     assert.equal(found.selections.length, 1);
     assert.equal((await fs.realpath(found.selections[0].path)).toLowerCase(), (await fs.realpath(save)).toLowerCase());
   }
-  await assert.rejects(detector.discover({ shop: 'steam', objectId: '1245629' }), /Steam ID belum dikenali/);
+  await assert.rejects(detector.discover({ shop: 'steam', objectId: '1245620' }), /Steam ID belum dikenali/);
   assert.equal(await fs.readFile(save, 'utf8'), 'example progress');
   console.log('Passed: real Ludusavi Steam ID lookup, exact title lookup, preview file discovery, and unknown-ID handling.');
   if (process.argv.includes('--live-manifest')) {
     const live = new Ludusavi(binary, path.join(root, 'live'));
     await live.updateManifest();
-    for (const id of ['1245629', '292030', '3751260']) {
+    for (const id of ['1245620', '292030', '3751260']) {
       try {
         const result = await live.invoke(['find', '--api', '--backup', '--steam-id', id]);
         console.log(`Live manifest Steam ${id}: ${JSON.stringify(Object.keys(result.games))}`);

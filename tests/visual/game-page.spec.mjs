@@ -135,3 +135,49 @@ test('OneDrive download enters local history without starting restore', async ({
   expect(calls.some(call => call.command === 'download')).toBe(true);
   expect(calls.some(call => call.action === 'restore')).toBe(false);
 });
+
+test('optimisasi lokal menampilkan progres serta hasil konfirmasi dan pembatalan', async ({ page }) => {
+  await visit(page, 'history');
+  const section = panel(page);
+  await section.getByRole('button', { name: 'Pilihan backup' }).click();
+  const optimize = section.getByRole('button', { name: 'Optimalkan backup lokal', exact: true });
+  page.once('dialog', dialog => dialog.dismiss());
+  await optimize.click();
+  await expect(section.getByText('Optimisasi lokal dibatalkan.', { exact: true })).toBeVisible();
+  page.once('dialog', dialog => dialog.accept());
+  await optimize.click();
+  await expect(section.getByRole('progressbar')).toBeVisible();
+  await expect(section.getByText('1 dari 2 versi pada tahap ini')).toBeVisible();
+  await expect(optimize).toBeDisabled();
+  await expect(section.getByText('Optimisasi lokal selesai:', { exact: false })).toBeVisible();
+  await expect(optimize).toBeEnabled();
+});
+
+test('optimisasi cloud memakai perintah terpisah dan menampilkan hasil pembatalan', async ({ page }) => {
+  await visit(page, 'complete');
+  await page.evaluate(() => window.visualFixture.connectCloud());
+  const cloud = page.getByLabel('OneDrive langsung');
+  const optimize = cloud.getByRole('button', { name: 'Optimalkan backup cloud', exact: true });
+  await expect(optimize).toBeVisible({ timeout: 8000 });
+  page.once('dialog', dialog => dialog.dismiss());
+  await optimize.click();
+  await expect(cloud.getByText('Optimisasi cloud dibatalkan.', { exact: true })).toBeVisible();
+  page.once('dialog', dialog => dialog.accept());
+  await optimize.click();
+  await expect(optimize).toBeDisabled();
+  await expect(cloud.getByText('Optimisasi cloud selesai:', { exact: false })).toBeVisible();
+  const calls = await page.evaluate(() => window.visualFixture.calls);
+  expect(calls.some(call => call.action === 'cloud' && call.command === 'optimize')).toBe(true);
+  expect(calls.some(call => call.action === 'restore')).toBe(false);
+});
+
+test('pengaturan menampilkan tombol optimisasi lokal dan cloud tanpa overflow', async ({ page }, info) => {
+  await page.goto('/?scenario=history&view=settings');
+  await expect(panel(page).getByRole('button', { name: 'Optimalkan backup lokal', exact: true })).toBeVisible();
+  await page.evaluate(() => window.visualFixture.connectCloud());
+  await expect(panel(page).getByRole('button', { name: 'Optimalkan backup cloud', exact: true })).toBeVisible({ timeout: 8000 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  expect(await panel(page).locator('button').evaluateAll(buttons => buttons.some(button => button.scrollWidth > button.clientWidth + 2))).toBe(false);
+  await fs.mkdir(screenshots, { recursive: true });
+  await page.screenshot({ path: path.join(screenshots, `${info.project.name}-optimization-settings.png`), fullPage: true, animations: 'disabled' });
+});

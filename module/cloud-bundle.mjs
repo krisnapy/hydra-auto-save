@@ -3,7 +3,7 @@ import path from 'node:path';
 import { gzip, gunzip } from 'node:zlib';
 import { promisify } from 'node:util';
 import { randomUUID } from 'node:crypto';
-import { digest, safePath } from './engine.mjs';
+import { digest, safePath, readBackupBlob, portableManifest } from './engine.mjs';
 
 export const SAVE_LIMIT = 32 * 1024 ** 2;
 export const BUNDLE_LIMIT = 48 * 1024 ** 2;
@@ -11,15 +11,16 @@ const zip = promisify(gzip), unzip = promisify(gunzip);
 const invalid = () => new Error('Paket cloud rusak, tidak lengkap, atau tidak sesuai perangkat/lokasi save.');
 
 export async function packVersion(engine, gameId, versionId) {
-  const manifest = (await engine.versions(gameId, { fresh: true, versionId }))[0];
-  if (!manifest) throw invalid();
+  const local = (await engine.versions(gameId, { fresh: true, versionId }))[0];
+  if (!local) throw invalid();
+  // The transport stays schema 1 for existing .hpb readers. Local compression
+  // is decoded before packaging; fingerprints describe original save bytes.
+  const manifest = portableManifest(local);
   if (manifest.files.length > 10000 || manifest.files.reduce((n, f) => n + f.bytes, 0) > SAVE_LIMIT) throw new Error('Unggahan 0.3 dibatasi 32 MiB dan 10.000 file per versi. Backup lokal tetap tersedia.');
   const blobs = {};
   for (const entry of manifest.files) {
     if (blobs[entry.hash] !== undefined) continue;
-    const file = path.join(engine.directory(gameId), versionId, 'data', entry.hash);
-    await safePath(file);
-    const bytes = await fs.readFile(file);
+    const bytes = await readBackupBlob(path.join(engine.directory(gameId), versionId), local, entry);
     if (bytes.length !== entry.bytes || digest(bytes) !== entry.hash) throw invalid();
     blobs[entry.hash] = bytes.toString('base64');
   }
@@ -30,13 +31,13 @@ export async function packVersion(engine, gameId, versionId) {
   return bytes;
 }
 
-export async function importVersion(engine, gameId, roots, bytes) {
+export async function validateBundle(engine, gameId, roots, bytes) {
   if (!Buffer.isBuffer(bytes) || bytes.length > BUNDLE_LIMIT) throw invalid();
   let value;
   try { value = JSON.parse((await unzip(bytes, { maxOutputLength: BUNDLE_LIMIT })).toString('utf8')); }
   catch { throw invalid(); }
   const m = value?.manifest;
-  if (value.schema !== 1 || !m || m.schema !== 1 || m.gameId !== gameId || m.deviceId !== engine.deviceId || !/^[a-zA-Z0-9_-]{1,100}$/.test(m.id) || m.id.startsWith('_') || !Array.isArray(m.files) || !Array.isArray(m.roots) || m.files.length > 10000 || typeof m.createdAt !== 'string' || !Number.isFinite(Date.parse(m.createdAt)) || typeof m.safety !== 'boolean' || !Number.isSafeInteger(m.order) || m.order < 0 || typeof value.blobs !== 'object' || value.blobs === null) throw invalid();
+  if (value.schema !== 1 || !m || m.schema !== 1 || m.compressed !== undefined || m.gameId !== gameId || m.deviceId !== engine.deviceId || !/^[a-zA-Z0-9_-]{1,100}$/.test(m.id) || m.id.startsWith('_') || !Array.isArray(m.files) || !Array.isArray(m.roots) || m.files.length > 10000 || typeof m.createdAt !== 'string' || !Number.isFinite(Date.parse(m.createdAt)) || typeof m.safety !== 'boolean' || !Number.isSafeInteger(m.order) || m.order < 0 || typeof value.blobs !== 'object' || value.blobs === null) throw invalid();
   await engine.validate(roots);
   if (m.roots.length !== roots.length || new Set(m.roots.map(r => r.id)).size !== roots.length || m.roots.some(r => !roots.some(local => local.id === r.id && local.kind === r.kind) || typeof r.present !== 'boolean')) throw invalid();
   const targets = new Set(); let size = 0;
@@ -53,6 +54,13 @@ export async function importVersion(engine, gameId, roots, bytes) {
   }
   for (const root of m.roots) if (root.present && root.kind === 'file' && m.files.filter(f => f.rootId === root.id).length !== 1) throw invalid();
   if (digest(JSON.stringify({ roots: m.roots, files: m.files })) !== m.fingerprint) throw invalid();
+  return value;
+}
+
+export async function importVersion(engine, gameId, roots, bytes) {
+  const value = await validateBundle(engine, gameId, roots, bytes);
+  const m = value.manifest;
+  const size = [...new Map(m.files.map(f => [f.hash, f])).values()].reduce((n, f) => n + f.bytes, 0);
   const directory = engine.directory(gameId);
   await safePath(directory);
   await engine.requireSpace(engine.destination, size);
@@ -62,7 +70,8 @@ export async function importVersion(engine, gameId, roots, bytes) {
   try {
     await fs.lstat(target);
     const local = (await engine.versions(gameId, { fresh: true, versionId: m.id }))[0];
-    if (JSON.stringify(local) !== JSON.stringify(m)) throw invalid();
+    const portable = local ? portableManifest(local) : {};
+    if (JSON.stringify(portable) !== JSON.stringify(m)) throw invalid();
     return m.id;
   } catch (error) { if (error.code !== 'ENOENT') throw error; }
   const stage = path.join(directory, `_cloud-${randomUUID()}`);

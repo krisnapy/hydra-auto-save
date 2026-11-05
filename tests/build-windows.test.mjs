@@ -51,6 +51,8 @@ test('installer preserves both configured targets and accepts explicit store ben
   } });
   assert.equal(packaged.args.includes('--dir'), false);
   assert.equal(packaged.options.env.HYDRA_BUILD_COMPRESSION, 'store');
+  const { version } = JSON.parse(await fs.readFile(new URL('../package.json', import.meta.url), 'utf8'));
+  assert.equal(packaged.options.env.HYDRA_PERSONAL_BACKUP_VERSION, version);
   await assert.rejects(buildWindows('.', { reportDir, mode: 'anything' }), /Unknown/);
   await assert.rejects(buildWindows('.', { reportDir, compression: 'anything' }), /Unknown/);
 });

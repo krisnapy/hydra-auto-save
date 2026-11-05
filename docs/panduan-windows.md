@@ -48,6 +48,10 @@ Pada halaman game → Personal Cloud Backup, klik **Buka folder save**. File Exp
 
 Klik **Buka lokasi backup** untuk membuka folder backup game pada perangkat ini. Pada Settings → Personal Cloud Backup, tombol yang sama membuka folder tujuan utama. Folder game tersedia setelah backup pertama dibuat. Jika lokasi save dihapus atau folder cloud tidak tersedia, aplikasi menampilkan alasan; tombol ini tidak membuat atau memulihkan save. Backup memakai struktur internal aplikasi; gunakan tombol **Pulihkan** untuk mengembalikan progres.
 
+## Optimisasi manual (0.3.2)
+
+Mulai installer 0.3.2, tersedia tombol **Optimalkan backup lokal** pada pengaturan dan menu **⋯** halaman game. Tombol **Optimalkan backup cloud** tersedia pada panel OneDrive yang terhubung. Keduanya memeriksa riwayat dan menampilkan ringkasan sebelum konfirmasi; lihat [perilaku dan batas optimisasi](optimisasi-penyimpanan.md#tombol-optimisasi-032).
+
 ## Riwayat lebih ringan (0.1.5)
 
 Aplikasi memakai hasil pemeriksaan file backup yang belum berubah agar pembaruan riwayat tidak membaca ulang seluruh isinya. Cache hilang ketika aplikasi ditutup. Pemeriksaan pertama setelah membuka aplikasi masih dapat membaca backup dari folder cloud.

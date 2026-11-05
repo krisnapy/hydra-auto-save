@@ -19,6 +19,7 @@ const base: BackupSnapshot = {
 };
 const operation = (kind = "backup", phase = "copying", completed = 4, total = 10) => ({ id: "fixture-operation", kind, phase, completed, total, gameId, title: "Game Contoh", startedAt: at, updatedAt: at });
 const scenario = new URLSearchParams(location.search).get("scenario") || "unconfigured";
+const settingsView = new URLSearchParams(location.search).get("view") === "settings";
 let current = structuredClone(base);
 switch (scenario) {
   case "unconfigured": current.roots = []; current.saveFolders = []; current.status = { status: "setup" }; break;
@@ -30,21 +31,35 @@ switch (scenario) {
   default: throw new Error(`Skenario tidak dikenal: ${scenario}`);
 }
 current.activity = [{ at, gameId, status: current.status.status, detail: current.status.detail ?? "Data contoh untuk pengujian tampilan." }];
-let cloudState = { provider: "onedrive", clientId: "11111111-2222-3333-4444-555555555555", connected: false, login: null as null | { userCode: string; expiresAt: number; url: string }, pending: 0, uploaded: 0, uploading: false, error: "", versions: [] as Array<{ name: string; modifiedAt: string; size: number }> };
+let cloudState = { provider: "onedrive", clientId: "11111111-2222-3333-4444-555555555555", connected: false, login: null as null | { userCode: string; expiresAt: number; url: string }, pending: 0, uploaded: 0, uploading: false, error: "", notice: undefined as string | undefined, versions: [] as Array<{ name: string; modifiedAt: string; size: number }> };
 const calls: Record<string, unknown>[] = [];
 const snapshot = () => structuredClone(current);
 const invoke = async (request: Record<string, unknown>) => {
   calls.push(request);
-  if (request.gameId !== gameId) throw new Error("UI meminta game di luar fixture.");
+  if (request.gameId !== gameId && !(settingsView && request.gameId === undefined)) throw new Error("UI meminta game di luar fixture.");
   if (request.action === "cloud") {
     if (request.command === "login") cloudState.login = { userCode: "ABCD-EFGH", expiresAt: Date.now() + 900000, url: "https://www.microsoft.com/link" };
     if (request.command === "disconnect") { cloudState.connected = false; cloudState.login = null; }
     if (request.command === "list") cloudState.versions = [{ name: "fixture-package.hpb", modifiedAt: at, size: 1024 }];
     if (request.command === "download") current.versions = [version("downloaded")];
+    if (request.command === "optimize") {
+      cloudState.notice = "Optimisasi cloud dibatalkan.";
+      if (window.confirm("Simulasi: pindahkan versi lama ke Recycle Bin OneDrive? Tidak ada data asli.")) {
+        current.operations = [operation("cloud-optimize", "optimization-cleaning", 1, 2)];
+        await new Promise(resolve => setTimeout(resolve, 1200)); current.operations = [];
+        cloudState.notice = "Optimisasi cloud selesai: 2 versi lama dipindahkan ke Recycle Bin OneDrive.";
+      }
+    }
     return structuredClone(cloudState);
   }
   if (request.action === "progress") return structuredClone({ operations: current.operations, lastOperation: current.lastOperation });
   if (request.action === "snapshot" || request.action === "open-save" || request.action === "open-backup") return snapshot();
+  if (request.action === "optimize") {
+    if (!window.confirm("Simulasi: kompresi backup lama? Tidak ada data asli.")) return { ...snapshot(), notice: "Optimisasi lokal dibatalkan." };
+    current.operations = [operation("local-optimize", "optimization-compressing", 1, 2)];
+    await new Promise(resolve => setTimeout(resolve, 1200)); current.operations = [];
+    return { ...snapshot(), notice: "Optimisasi lokal selesai: 2 versi diproses, 5 MiB data dihemat." };
+  }
   if (request.action === "backup" || request.action === "restore") {
     if (scenario === "error") throw new Error(current.status.detail);
     if (request.action === "restore" && !window.confirm("Simulasi konfirmasi pemulihan. Tidak ada file yang diganti.")) return snapshot();
@@ -65,5 +80,5 @@ createRoot(document.getElementById("root")!).render(<main className="visual-harn
   <p className="visual-harness__notice">UJI TAMPILAN · DATA CONTOH · {scenario}</p>
   <h1>Game Contoh</h1>
   <p>Panel halaman game memakai komponen dan stylesheet aplikasi. Bingkai ini khusus pengujian.</p>
-  <PersonalCloudBackup gameId={gameId} />
+  <PersonalCloudBackup gameId={settingsView ? undefined : gameId} />
 </main>);

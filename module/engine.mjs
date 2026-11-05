@@ -1,6 +1,9 @@
 import * as fs from 'node:fs/promises';
 import path from 'node:path';
-import { createReadStream } from 'node:fs';
+import { createReadStream, createWriteStream, constants } from 'node:fs';
+import { createGzip, createGunzip } from 'node:zlib';
+import { Transform } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import { createHash, randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 
@@ -22,6 +25,52 @@ export async function hashFile(file) {
   const hash = createHash('sha256');
   for await (const chunk of createReadStream(file)) hash.update(chunk);
   return hash.digest('hex');
+}
+
+// Bound decompression by the recorded original length and verify the decoded
+// bytes while streaming. A restore never links a live save to backup storage.
+function checkedBytes(entry) {
+  let bytes = 0;
+  const hash = createHash('sha256');
+  return new Transform({
+    transform(chunk, _, callback) {
+      bytes += chunk.length;
+      if (bytes > entry.bytes) return callback(new Error('Ukuran isi backup tidak sesuai.'));
+      hash.update(chunk); callback(null, chunk);
+    },
+    flush(callback) {
+      callback(bytes === entry.bytes && hash.digest('hex') === entry.hash ? null : new Error('Integritas backup gagal.'));
+    },
+  });
+}
+
+export async function readBackupBlob(folder, manifest, entry) {
+  const file = path.join(folder, 'data', entry.hash);
+  await safePath(file);
+  const chunks = [];
+  await pipeline(createReadStream(file), ...(manifest.compressed?.includes(entry.hash) ? [createGunzip()] : []), checkedBytes(entry), async stream => {
+    for await (const chunk of stream) chunks.push(chunk);
+  });
+  return Buffer.concat(chunks);
+}
+
+export function portableManifest(value) {
+  const { compressed, storage, ...manifest } = value;
+  manifest.schema = 1;
+  return manifest;
+}
+
+export async function storeBackupBlob(source, target, entry, compressed = false) {
+  await safePath(source); await safePath(target);
+  if (compressed || entry.bytes < 4096) {
+    await fs.copyFile(source, target, constants.COPYFILE_FICLONE);
+    return compressed;
+  }
+  await pipeline(createReadStream(source), checkedBytes(entry), createGzip({ level: 1 }), createWriteStream(target, { flags: 'wx' }));
+  if ((await fs.stat(target)).size + 64 < entry.bytes) return true;
+  await fs.rm(target);
+  await fs.copyFile(source, target, constants.COPYFILE_FICLONE);
+  return false;
 }
 
 // Reject symlinks/junctions in every existing component, including parents.
@@ -94,7 +143,7 @@ export class BackupEngine {
   async idle() { await Promise.allSettled([...this.jobs.values()]); }
   async exclusive(gameId, action) {
     if (this.jobs.has(gameId)) throw new Error('Operasi backup atau pemulihan masih berjalan.');
-    const pending = Promise.resolve().then(action);
+    const pending = Promise.resolve().then(async () => { await this.repairJobs?.get(gameId); return action(); });
     this.jobs.set(gameId, pending);
     try { return await pending; } finally { this.jobs.delete(gameId); }
   }
@@ -175,15 +224,15 @@ export class BackupEngine {
     return file;
   }
 
-  async verifyHistoryBlob(blob, entry, fresh) {
+  async verifyHistoryBlob(blob, entry, fresh, compressed = false) {
     await safePath(blob);
     const signature = async () => {
       const info = await fs.lstat(blob, { bigint: true });
-      if (!info.isFile() || info.size !== BigInt(entry.bytes)) throw new Error('Isi backup belum lengkap.');
+      if (!info.isFile() || (compressed ? info.size <= 0n || info.size > BigInt(entry.bytes) : info.size !== BigInt(entry.bytes))) throw new Error('Isi backup belum lengkap.');
       return [info.dev, info.ino, info.size, info.mtimeNs, info.ctimeNs].join(':');
     };
     const before = await signature();
-    const key = `${before}:${entry.hash}`;
+    const key = `${before}:${entry.hash}:${entry.bytes}:${compressed}`;
     if (!fresh && this.historyCache.get(blob) === key) {
       this.historyCache.delete(blob);
       this.historyCache.set(blob, key);
@@ -197,7 +246,7 @@ export class BackupEngine {
     const check = (async () => {
       this.historyCacheStats.filesHashed++;
       this.historyCacheStats.bytesHashed += entry.bytes;
-      if (await hashFile(blob) !== entry.hash) throw new Error('Integritas backup gagal.');
+      await pipeline(createReadStream(blob), ...(compressed ? [createGunzip()] : []), checkedBytes(entry), async stream => { for await (const _ of stream) { /* drain verified bytes */ } });
       if (await signature() !== before) throw new Error('Isi backup berubah saat diperiksa.');
       this.historyCache.delete(blob);
       this.historyCache.set(blob, key);
@@ -209,7 +258,40 @@ export class BackupEngine {
     finally { if (!fresh && this.historyChecks.get(pendingKey) === check) this.historyChecks.delete(pendingKey); }
   }
 
-  async versions(gameId, { fresh = false, versionId } = {}) {
+  repairOptimizations(gameId) {
+    this.repairJobs ??= new Map();
+    if (this.repairJobs.has(gameId)) return this.repairJobs.get(gameId);
+    const job = (async () => {
+      const directory = this.directory(gameId);
+      await safePath(directory);
+      if (!await exists(directory)) return;
+      for (const name of await fs.readdir(directory)) {
+        if (!name.startsWith('_opt-old-')) continue;
+        const id = name.slice('_opt-old-'.length);
+        if (!safeId(id) || id.startsWith('_')) continue;
+        const old = path.join(directory, name), target = path.join(directory, id);
+        await safePath(old); await safePath(target);
+        // Both directories have the same immutable identity. Keep the original
+        // until the replacement is fully verified, including after a restart.
+        const original = await json(path.join(old, 'manifest.json'));
+        if (original.id !== id || original.gameId !== gameId || original.deviceId !== this.deviceId) throw new Error('Catatan optimisasi tidak sesuai game. Folder pengaman dipertahankan.');
+        const replacement = (await this.versions(gameId, { fresh: true, versionId: id, skipRepair: true }))[0];
+        if (replacement && same(portableManifest(original), portableManifest(replacement))) {
+          const trash = path.join(directory, `_opt-trash-${randomUUID()}`);
+          await fs.rename(old, trash);
+          await fs.rm(trash, { recursive: true });
+        } else {
+          if (await exists(target)) await fs.rename(target, path.join(directory, `_opt-failed-${randomUUID()}`));
+          await fs.rename(old, target);
+        }
+      }
+    })().finally(() => this.repairJobs.delete(gameId));
+    this.repairJobs.set(gameId, job);
+    return job;
+  }
+
+  async versions(gameId, { fresh = false, versionId, skipRepair = false } = {}) {
+    if (!skipRepair && !this.busy(gameId)) await this.repairOptimizations(gameId);
     const directory = this.directory(gameId);
     await safePath(directory);
     if (!await exists(directory)) return [];
@@ -223,12 +305,14 @@ export class BackupEngine {
         const marker = await fs.readFile(path.join(folder, 'COMPLETE'), 'utf8');
         if (digest(bytes) !== marker) continue;
         const manifest = JSON.parse(bytes);
-        if (manifest.schema !== 1 || manifest.gameId !== gameId || manifest.deviceId !== this.deviceId || manifest.id !== name) continue;
+        if (![1, 2].includes(manifest.schema) || manifest.gameId !== gameId || manifest.deviceId !== this.deviceId || manifest.id !== name) continue;
+        if (manifest.schema === 1 && manifest.compressed !== undefined) continue;
+        if (manifest.schema === 2 && (!Array.isArray(manifest.compressed) || new Set(manifest.compressed).size !== manifest.compressed.length || manifest.compressed.some(hash => !/^[a-f0-9]{64}$/.test(hash) || !manifest.files.some(file => file.hash === hash)))) continue;
         // Do not offer partially downloaded/corrupt cloud versions for restoration.
         for (const entry of manifest.files) {
           if (!/^[a-f0-9]{64}$/.test(entry.hash) || !Number.isSafeInteger(entry.bytes) || entry.bytes < 0) throw new Error('Metadata file tidak valid.');
           const blob = path.join(folder, 'data', entry.hash);
-          await this.verifyHistoryBlob(blob, entry, fresh);
+          await this.verifyHistoryBlob(blob, entry, fresh, manifest.compressed?.includes(entry.hash));
         }
         versions.push(manifest);
       } catch { /* Missing or incomplete cloud files are not restorable versions. */ }
@@ -326,6 +410,7 @@ export class BackupEngine {
   }
 
   async capture(gameId, roots, { reason = 'manual', safety = false } = {}) {
+    await this.repairOptimizations(gameId);
     await this.assertNoRecovery(gameId);
     this.onStatus(gameId, 'preparing');
     const report = (phase, completed, total) => this.onProgress(gameId, safety ? `safety-${phase}` : phase, completed, total);
@@ -360,29 +445,49 @@ export class BackupEngine {
       const id = `${Date.now()}-${randomUUID()}`;
       const directory = this.directory(gameId);
       await safePath(directory);
-      await this.requireSpace(this.destination, first.files.reduce((sum, file) => sum + file.bytes, 0));
+      const uniqueFiles = new Map(first.files.map(file => [file.hash, file]));
+      await this.requireSpace(this.destination, [...uniqueFiles.values()].reduce((sum, file) => sum + file.bytes, 0));
       temporary = path.join(directory, `_pending-${id}`);
       await fs.mkdir(path.join(temporary, 'data'), { recursive: true });
       let copied = 0;
+      const compressed = [], written = new Set();
+      const reusable = new Map();
+      for (const version of versions) for (const entry of version.files) if (!reusable.has(entry.hash)) reusable.set(entry.hash, { version, entry });
       report('copying', 0, first.files.length);
       for (const entry of first.files) {
         const source = this.source(roots, entry);
         await safePath(source);
         const target = path.join(temporary, 'data', entry.hash);
-        if (!await exists(target)) {
-          try { await fs.copyFile(source, target); }
+        if (!written.has(entry.hash)) {
+          try {
+            const prior = reusable.get(entry.hash);
+            if (prior && prior.entry.bytes === entry.bytes && (entry.bytes < 4096 || prior.version.storage === 'adaptive-gzip-v1' || prior.version.compressed?.includes(entry.hash))) {
+              const previous = path.join(directory, prior.version.id, 'data', entry.hash);
+              await safePath(previous);
+              // Reflink when supported, ordinary independent copy otherwise.
+              // Avoid hardlinks: editing a backup must not alter other versions.
+              await fs.copyFile(previous, target, constants.COPYFILE_FICLONE);
+              if (prior.version.compressed?.includes(entry.hash)) compressed.push(entry.hash);
+            } else if (await storeBackupBlob(source, target, entry)) compressed.push(entry.hash);
+          }
           catch (error) {
             if (error.code === 'ENOENT' && !await exists(source)) throw unstable(`Sumber berubah selama penyalinan: ${source}. File hilang atau sedang diganti; backup akan dicoba lagi.`);
+            if (/Integritas backup gagal|Ukuran isi backup/.test(error.message)) throw unstable(`Sumber berubah selama penyalinan: ${source}. Backup akan dicoba lagi setelah stabil.`);
             throw error;
           }
+          try { await this.verifyHistoryBlob(target, entry, true, compressed.includes(entry.hash)); }
+          catch (error) {
+            if (/Integritas backup gagal|Ukuran isi backup|Isi backup belum lengkap/.test(error.message)) throw unstable(`Sumber atau salinan berubah selama penyalinan: ${source}. Backup akan dicoba lagi setelah stabil.`);
+            throw error;
+          }
+          written.add(entry.hash);
         }
-        if (await hashFile(target) !== entry.hash) throw unstable(`Sumber berubah selama penyalinan: ${source}. Backup akan dicoba lagi setelah stabil.`);
         report('copying', ++copied, first.files.length);
       }
       const final = await scan('verifying');
       if (!same(first, final)) throw this.unstableChange('Sumber berubah selama penyalinan; backup akan dicoba lagi setelah stabil.', first, final, roots);
       const order = Math.max(0, ...versions.map(version => version.order ?? 0)) + 1;
-      const manifest = { schema: 1, id, gameId, deviceId: this.deviceId, order, createdAt: new Date().toISOString(), reason, safety, fingerprint, ...first };
+      const manifest = { schema: compressed.length ? 2 : 1, storage: 'adaptive-gzip-v1', ...(compressed.length ? { compressed } : {}), id, gameId, deviceId: this.deviceId, order, createdAt: new Date().toISOString(), reason, safety, fingerprint, ...first };
       report('publishing');
       const bytes = JSON.stringify(manifest, null, 2);
       await fs.writeFile(path.join(temporary, 'manifest.json'), bytes);
@@ -411,6 +516,7 @@ export class BackupEngine {
   restore(gameId, roots, versionId, confirmed) {
     return this.exclusive(gameId, async () => {
       if (confirmed !== true) throw new Error('Pemulihan memerlukan konfirmasi.');
+      await this.repairOptimizations(gameId);
       this.onProgress(gameId, 'checking-restore');
       await this.validate(roots);
       await this.assertStopped(gameId);
@@ -446,8 +552,7 @@ export class BackupEngine {
             await fs.mkdir(path.dirname(target), { recursive: true });
             const blob = path.join(this.directory(gameId), manifest.id, 'data', entry.hash);
             await safePath(blob);
-            await fs.copyFile(blob, target);
-            if (await hashFile(target) !== entry.hash) throw new Error('File backup rusak atau belum tersedia secara lokal.');
+            await pipeline(createReadStream(blob), ...(manifest.compressed?.includes(entry.hash) ? [createGunzip()] : []), checkedBytes(entry), createWriteStream(target, { flags: 'wx' }));
             this.onProgress(gameId, 'restore-staging', ++staged, manifest.files.length);
           }
           if (plan.present && plan.kind === 'file' && !await exists(plan.stage)) throw new Error('Isi file backup tidak lengkap.');

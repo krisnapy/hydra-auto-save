@@ -1,6 +1,8 @@
 const fs = require('node:fs');
 const YAML = require('yaml');
 const config = YAML.parse(fs.readFileSync('electron-builder.yml', 'utf8'));
+const personalVersion = process.env.HYDRA_PERSONAL_BACKUP_VERSION;
+if (!/^\d+\.\d+\.\d+$/.test(personalVersion || '')) throw new Error('Missing Personal Backup release version');
 
 // Keep release compression unchanged unless explicitly comparing a faster build.
 const compression = process.env.HYDRA_BUILD_COMPRESSION || 'normal';
@@ -12,12 +14,12 @@ config.compression = compression;
 config.appId = 'id.krisnapy.hydra.personalbackup';
 config.win.executableName = 'Hydra Personal Backup';
 config.win.target = [{ target: 'nsis', arch: ['x64'] }, { target: 'portable', arch: ['x64'] }];
-config.nsis.artifactName = 'Hydra-Personal-Backup-0.3.0-hydra-${version}-windows-x64-setup.${ext}';
+config.nsis.artifactName = `Hydra-Personal-Backup-${personalVersion}-hydra-\${version}-windows-x64-setup.\${ext}`;
 config.nsis.shortcutName = 'Hydra Personal Backup';
 config.nsis.uninstallDisplayName = 'Hydra Personal Backup';
 config.nsis.deleteAppDataOnUninstall = false;
 delete config.nsis.include;
-config.portable.artifactName = 'Hydra-Personal-Backup-0.3.0-hydra-${version}-windows-x64-portable.${ext}';
+config.portable.artifactName = `Hydra-Personal-Backup-${personalVersion}-hydra-\${version}-windows-x64-portable.\${ext}`;
 config.extraResources.push({ from: 'Personal-Backup-README.md', to: 'Personal-Backup-README.md' });
 config.files.push('!.personal-backup-originals/**', '!personal-backup-builder.cjs');
 // This static link input is already compiled into classic-level's addon. The

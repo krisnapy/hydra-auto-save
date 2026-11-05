@@ -20,9 +20,11 @@ const labels: Record<string, string> = {
 };
 
 const operationLabels: Record<string, string> = {
+  "local-optimize-scan": "Memeriksa optimisasi lokal", "local-optimize": "Optimisasi backup lokal", "cloud-optimize-scan": "Memeriksa optimisasi cloud", "cloud-optimize": "Optimisasi backup cloud",
   "cloud-queue": "Menyiapkan unggahan OneDrive", "cloud-download": "Mengunduh versi OneDrive", recover: "Penanganan pemulihan", automatic: "Backup otomatis", backup: "Backup", restore: "Pemulihan", settings: "Pengaturan", manual: "Pengaturan lokasi save", detect: "Deteksi lokasi save", manifest: "Pembaruan database",
 };
 const phaseLabels: Record<string, string> = {
+  "optimization-inspecting": "Memeriksa backup yang dapat dioptimalkan", "optimization-compressing": "Mengompresi dan memeriksa backup lama", "optimization-cleaning": "Merapikan versi lama sesuai batas riwayat",
   queued: "Menunggu giliran; operasi yang berjalan akan diselesaikan dahulu", preparing: "Menyiapkan operasi", detecting: "Mencari lokasi save", manifest: "Mengunduh database lokasi save",
   scanning: "Membaca isi save untuk mencari perubahan", stabilizing: "Menunggu jeda aman penulisan save (1,2 detik)", "checking-stability": "Membaca ulang save untuk memastikan isinya stabil", "checking-history": "Memeriksa riwayat backup", copying: "Menyalin dan memeriksa file",
   verifying: "Memeriksa kembali sumber save", publishing: "Menyelesaikan versi backup", retention: "Merapikan riwayat backup", "checking-restore": "Memeriksa game dan integritas backup",
@@ -77,7 +79,7 @@ export function BackupProgressPanel({ gameId, busy, compact = false, onCompleted
             <span style={determinate ? { transform: `scaleX(${percent! / 100})` } : undefined} />
           </div>
           {!determinate && typeof operation.completed === "number" && <p>{operation.completed} file telah diperiksa pada tahap ini</p>}
-          {determinate && <p>{operation.completed ?? 0} dari {operation.total} {operation.phase === "restore-replacing" ? "lokasi" : "file"} pada tahap ini</p>}
+          {determinate && <p>{operation.completed ?? 0} dari {operation.total} {operation.phase === "restore-replacing" ? "lokasi" : operation.phase === "optimization-inspecting" ? "item" : operation.phase.startsWith("optimization-") ? "versi" : "file"} pada tahap ini</p>}
           {!compact && <small>Mulai {new Date(operation.startedAt).toLocaleTimeString()}</small>}
         </div>;
       })}
@@ -163,6 +165,7 @@ function GameBackupView({ snapshot, busy, opening, error, message, gameId, actio
         <button disabled={busy} onClick={() => void action("manual", { kind: "directory" })}>Pilih folder save</button>
         <button disabled={busy} onClick={() => void action("manual", { kind: "file" })}>Pilih file save</button>
         <button disabled={opening || !snapshot.backupDirectory} onClick={() => void openLocation("open-backup")}>Buka folder backup</button>
+        <button disabled={blocked || !snapshot.versions.length} onClick={() => void action("optimize")}>Optimalkan backup lokal</button>
       </div>}
       {historyOpen && <div className="personal-backup__history">
         <div className="personal-backup__history-heading"><h4>Pilih versi pemulihan</h4><button onClick={() => setHistoryOpen(false)} aria-label="Tutup riwayat">Tutup</button></div>
@@ -227,6 +230,7 @@ export function PersonalCloudBackup({ gameId }: { gameId?: string }) {
         if (name === "detect") setMessage("Lokasi save ditemukan.");
         if (name === "backup") setMessage(result.lastOperation?.detail || "Backup lokal selesai. Riwayat diperbarui.");
         if (name === "restore") setMessage(result.lastOperation?.kind === "restore" && result.lastOperation.status === "complete" ? "Pemulihan selesai." : "Pemulihan dibatalkan.");
+        if (name === "optimize") setMessage(result.notice || "Pemeriksaan optimisasi selesai.");
         if (["configure", "destination", "manual", "ludusavi"].includes(name)) setMessage("Pengaturan selesai diperbarui.");
       }
     } catch (failure) { if (mounted.current) setError(String(failure)); }
@@ -281,6 +285,7 @@ export function PersonalCloudBackup({ gameId }: { gameId?: string }) {
         <button disabled={busy || !snapshot.ludusavi} onClick={() => void action("manifest")}>Perbarui database lokasi save</button>
         <label>Riwayat per game pada perangkat ini <select disabled={busy} value={snapshot.retention} onChange={event => void action("configure", { enabled: snapshot.enabled, retention: Number(event.target.value) })}>{[5, 10, 20, 50, 100].map(value => <option key={value} value={value}>{value} versi</option>)}</select></label>
         <p>Backup pengaman sebelum pemulihan disimpan terpisah dari batas riwayat dan tidak dihapus otomatis.</p>
+        <div className="personal-backup__row"><div><strong>Optimisasi backup lokal</strong><p>Kompresi backup lama dan rapikan versi di luar batas riwayat. Ringkasan ditampilkan sebelum konfirmasi; backup pengaman tetap disimpan.</p></div><button disabled={busy || !snapshot.destination} onClick={() => void action("optimize")}>Optimalkan backup lokal</button></div>
       </> : null}
       <h4>Aktivitas terbaru</h4>
       {snapshot.activity.length === 0 && <p>Belum ada aktivitas backup.</p>}

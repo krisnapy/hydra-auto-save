@@ -4,6 +4,8 @@ import { randomUUID } from 'node:crypto';
 import { BackupEngine, atomicJson, makeRoots, safePath } from './engine.mjs';
 import { SaveMonitor } from './save-monitor.mjs';
 import { Ludusavi } from './ludusavi.mjs';
+import { writeBackupCatalog } from './backup-catalog.mjs';
+import { localPlan, optimizeLocal } from './backup-optimization.mjs';
 
 export class BackupController {
   constructor({ stateDirectory, getGames, assertStopped, onError = () => {}, isBackground = () => false, stableMs = 1200, pollMs = 5000, idlePollMs = 30000, debounceMs = 1500, fallbackMs = 60000, monitorFactory = callback => new SaveMonitor(callback) }) {
@@ -35,7 +37,24 @@ export class BackupController {
       this.state.setupCompleted = Boolean(this.state.enabled && this.state.destination && this.state.firstBackupAt);
     }
     this.rebuild();
+    await this.refreshCatalog();
     return this;
+  }
+  refreshCatalog() {
+    if (!this.engine) return Promise.resolve();
+    if (this.catalogJob) return this.catalogJob;
+    const engine = this.engine;
+    this.catalogJob = (async () => {
+      const library = new Map((await this.getGames()).map(game => [game.id, game]));
+      const games = Object.entries(this.state.games).map(([id, config]) => {
+        config.title = library.get(id)?.title || config.title || id;
+        return { id, title: config.title, roots: config.roots };
+      });
+      await writeBackupCatalog(engine, games);
+      await this.save();
+    })().catch(error => this.onError(new Error(`Keterangan folder backup belum dapat diperbarui: ${error.message}`)))
+      .finally(() => { this.catalogJob = undefined; });
+    return this.catalogJob;
   }
   rebuild() {
     this.engine = this.state.destination ? new BackupEngine({ destination: this.state.destination, deviceId: this.state.deviceId, stateDirectory: this.stateDirectory, retention: this.state.retention, stableMs: this.stableMs, assertStopped: this.assertStopped, onStatus: (id, status, detail) => this.setStatus(id, status, detail), onProgress: (id, phase, completed, total) => this.progress(id, phase, completed, total) }) : null;
@@ -99,7 +118,7 @@ export class BackupController {
       operation.updatedAt = new Date().toISOString();
       try {
         const result = await action();
-        this.rememberOperation({ kind, gameId, status: 'complete', at: new Date().toISOString(), detail: kind === 'backup' && !result ? 'Isi save tidak berubah; tidak membuat versi baru.' : undefined });
+        this.rememberOperation({ kind, gameId, status: 'complete', at: new Date().toISOString(), detail: kind.endsWith('optimize') ? result?.detail : kind === 'backup' && !result ? 'Isi save tidak berubah; tidak membuat versi baru.' : undefined });
         return result;
       } catch (error) {
         this.rememberOperation({ kind, gameId, status: 'failed', at: new Date().toISOString(), detail: error.message });
@@ -156,7 +175,7 @@ export class BackupController {
     if (!games.some(game => game.id === gameId)) throw new Error('Game tidak tersedia di pustaka.');
     const roots = await makeRoots(selections);
     if (this.engine) await this.engine.validate(roots);
-    this.state.games[gameId] = { roots, mode: 'manual' };
+    this.state.games[gameId] = { roots, mode: 'manual', title: games.find(game => game.id === gameId).title };
     this.unstableRetries.delete(gameId);
     this.lastScan.delete(gameId); this.markChanged(gameId);
     this.status.set(gameId, { status: 'waiting' });
@@ -208,12 +227,28 @@ export class BackupController {
   backup(gameId, reason = 'manual') {
     return this.control(() => this.backupInternal(gameId, reason), 'backup', gameId);
   }
+  optimizationGames(gameId) {
+    if (!this.engine) throw new Error('Pilih folder backup terlebih dahulu.');
+    if (gameId && !this.state.games[gameId]) throw new Error('Game belum diatur untuk backup.');
+    return gameId ? [gameId] : Object.keys(this.state.games).sort();
+  }
+  planOptimization(gameId) {
+    return this.control(() => localPlan(this.engine, this.optimizationGames(gameId), (...args) => this.progress(gameId, ...args)), 'local-optimize-scan', gameId);
+  }
+  optimize(token, gameId) {
+    return this.control(async () => {
+      const result = await optimizeLocal(this.engine, this.optimizationGames(gameId), token, (...args) => this.progress(gameId, ...args));
+      await this.refreshCatalog();
+      return result;
+    }, 'local-optimize', gameId);
+  }
   async backupInternal(gameId, reason) {
     if (!this.engine) throw new Error('Pilih folder backup terlebih dahulu.');
     const config = this.state.games[gameId];
     if (!config?.roots.length) throw new Error('Perlu pengaturan lokasi save.');
     try {
       const result = await this.engine.backup(gameId, config.roots, { reason });
+      if (result) await this.refreshCatalog();
       this.unstableRetries.delete(gameId);
       await this.onBackupCompleted?.(this.engine, gameId, result);
       return result;
@@ -316,6 +351,7 @@ export class BackupController {
     await this.tickJob?.catch(() => {});
     await this.controlTail?.catch(() => {});
     await this.engine?.idle();
+    await this.catalogJob;
     this.monitor.close();
     await this.saving;
   }

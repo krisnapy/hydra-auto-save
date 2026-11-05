@@ -10,6 +10,7 @@ export interface BackupProgress {
 }
 export interface RecoveryInfo { journal: string; automatic: boolean; committed: boolean; }
 export interface BackupSnapshot {
+  notice?: string;
   setup: { completed: boolean; firstBackupAt?: string; games: Array<{ id: string; title: string; configured: boolean }> };
   storage: { availableBytes?: number; totalBytes?: number; warning: boolean; detail: string } | null;
   recovery: RecoveryInfo | null;
@@ -28,6 +29,9 @@ export class BackupController {
   constructor(options: { stateDirectory: string; getGames: () => Promise<BackupGame[]>; assertStopped: (gameId: string) => Promise<void>; onError?: (error: unknown) => void; isBackground?: () => boolean; stableMs?: number; pollMs?: number; idlePollMs?: number; debounceMs?: number; fallbackMs?: number });
   onBackupCompleted?: (engine: unknown, gameId: string, manifest: unknown) => Promise<void>;
   init(): Promise<this>;
+  refreshCatalog(): Promise<void>;
+  planOptimization(gameId?: string): Promise<{ token: string; retention: number; compress: number; remove: number; removableBytes: number }>;
+  optimize(token: string, gameId?: string): Promise<{ detail: string }>;
   configure(values: { enabled?: boolean; destination?: string; ludusavi?: string; retention?: number; setupCompleted?: boolean }): Promise<void>;
   manual(gameId: string, selections: Array<{ path: string }>): Promise<void>;
   detect(gameId: string): Promise<void>;

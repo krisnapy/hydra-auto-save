@@ -73,18 +73,23 @@ export class OneDrive {
     return item.id;
   }
   async list(prefix) {
-    let relative = 'me/drive/special/approot/children?$select=id,name,size,lastModifiedDateTime&$top=200';
+    let relative = 'me/drive/special/approot/children?$select=id,name,size,eTag,lastModifiedDateTime&$top=200';
     const result = [];
     for (let page = 0; relative && page < 100; page++) {
       const data = await (await this.graph(relative)).json();
       if (!Array.isArray(data.value)) throw new Error('Daftar OneDrive tidak valid.');
-      result.push(...data.value.filter(item => cloudName(item.name) && item.name.startsWith(prefix) && Number.isSafeInteger(item.size) && item.size <= BUNDLE_LIMIT));
+      result.push(...data.value.filter(item => cloudName(item.name) && item.name.startsWith(prefix) && Number.isSafeInteger(item.size) && item.size >= 0 && item.size <= BUNDLE_LIMIT));
       const next = data['@odata.nextLink'];
       if (next && (!next.startsWith(GRAPH + 'me/drive/special/approot/children?'))) throw new Error('Alamat lanjutan OneDrive tidak valid.');
       relative = next ? next.slice(GRAPH.length) : '';
     }
     if (relative) throw new Error('Terlalu banyak versi cloud. Periksa folder aplikasi OneDrive.');
     return result;
+  }
+  async remove(name, eTag) {
+    if (!cloudName(name) || typeof eTag !== 'string' || !eTag || eTag.length > 1000 || /[\r\n]/.test(eTag)) throw new Error('Identitas versi cloud belum dapat dipastikan. Muat ulang pemeriksaan optimisasi.');
+    const response = await this.graph(`me/drive/special/approot:/${name}`, { method: 'DELETE', headers: { 'If-Match': eTag } });
+    if (response.status !== 204) throw new Error('Hasil pembersihan OneDrive belum dapat dipastikan. Periksa ulang daftar versi.');
   }
   async download(name) {
     if (!cloudName(name)) throw new Error('Nama versi cloud tidak valid.');

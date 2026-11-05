@@ -9,7 +9,7 @@ async function harness({ file = false, missing = false, failure = '' } = {}) {
   let handler;
   const calls = [];
   const snapshot = { saveFolders: [{ rootId: 'configured', path: file ? 'C:/save' : 'C:/save/my progress.sav' }], roots: [{ id: 'configured', path: 'C:/save/my progress.sav', kind: file ? 'file' : 'directory' }], backupDirectory: 'C:/cloud/game' };
-  const controller = { snapshot: async (...args) => { calls.push(['snapshot', ...args]); return snapshot; } };
+  const controller = { refreshCatalog: async () => { calls.push(['catalog']); }, snapshot: async (...args) => { calls.push(['snapshot', ...args]); return snapshot; } };
   const source = await readFile(new URL('../integration/overlay/src/main/events/personal-cloud-backup.ts', import.meta.url), 'utf8');
   const modules = {
     'node:path': { dirname: path.posix.dirname },
@@ -30,6 +30,8 @@ test('Explorer opens configured save folders without revealing or executing indi
   const h = await harness();
   await h.invoke({ action: 'open-save', rootId: 'configured', path: 'C:/untrusted.exe' });
   await h.invoke({ action: 'open-backup' });
+  assert.equal(h.calls.filter(c => c[0] === 'catalog').length, 1);
+  assert.ok(h.calls.findIndex(c => c[0] === 'catalog') < h.calls.findIndex(c => c[0] === 'open' && c[1] === 'C:/cloud/game'));
   assert.deepEqual(h.calls.filter(c => c[0] === 'open'), [['open', 'C:/save/my progress.sav'], ['open', 'C:/cloud/game']]);
   assert.ok(h.calls.filter(c => c[0] === 'snapshot').every(c => c[2] === true));
   await assert.rejects(h.invoke({ action: 'open-save', rootId: 'other' }), /belum diatur/);

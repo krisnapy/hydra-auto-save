@@ -1,5 +1,6 @@
 import type { BackupController } from './controller.mjs';
 export interface CloudSnapshot {
+  notice?: string;
   provider: 'onedrive'; clientId: string; connected: boolean;
   login: { userCode: string; expiresAt: number; url: string } | null;
   pending: number; uploaded: number; uploading: boolean; error: string; lastUploadedAt?: string;
@@ -15,5 +16,7 @@ export class CloudSync {
   sync(gameId?: string): Promise<void>;
   list(gameId: string): Promise<void>;
   download(gameId: string, name: string): Promise<void>;
+  planOptimization(gameId?: string): Promise<{ token: string; retention: number; remove: number; removableBytes: number; protectedCount: number }>;
+  optimize(token: string, gameId?: string): Promise<{ detail: string }>;
   stop(): Promise<void>;
 }

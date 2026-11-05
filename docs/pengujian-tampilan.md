@@ -1,5 +1,11 @@
 # Pengujian tampilan halaman game
 
+## Perubahan lokal 5 November 2026 — tombol optimisasi (belum dirilis)
+
+34 tes visual/interaksi lulus pada viewport 1440×1000 dan 1024×768, memakai komponen React/SCSS produksi dengan data serta IPC contoh. Tambahan mencakup tombol optimisasi lokal di menu halaman game, tombol cloud setelah terhubung, progres dan hasil, pembatalan kedua operasi, serta pengaturan satu kolom tanpa overflow. Screenshot pengaturan tersedia secara lokal di `visual-results/screenshots/desktop-optimization-settings.png` dan `compact-optimization-settings.png`; screenshot compact telah diperiksa visual.
+
+104 tes modul/integrasi lulus, termasuk penukaran direktori backup yang terputus, pemulihan hasil kompresi, ruang penuh, akun/ETag/riwayat berubah, paket rusak, unggahan tertunda, pembersihan sebagian, dan konfirmasi native pada handler IPC. Pemeriksaan sintaks 19 file TypeScript, tipe React dan bundle modul utama lulus. Ini belum build installer atau pengujian native Windows/OneDrive nyata. Dialog pada fixture browser tetap simulasi; handler IPC diuji terpisah dengan Electron mock.
+
 ## Terbaru — OneDrive 0.3.0
 
 Terverifikasi 1 November 2026 WITA. [Build 41247200550](https://github.com/krisnapy/hydra-auto-save/actions/runs/41247200550), [verifikasi 41248027671](https://github.com/krisnapy/hydra-auto-save/actions/runs/41248027671), dan [visual 41248027689](https://github.com/krisnapy/hydra-auto-save/actions/runs/41248027689) lulus. Sumber paket: [9dcc75a](https://github.com/krisnapy/hydra-auto-save/commit/9dcc75a24d4ba376ba3ea1cdc97f22bb2afbef36).

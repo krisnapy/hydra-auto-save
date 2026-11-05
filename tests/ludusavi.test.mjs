@@ -47,9 +47,9 @@ test('proses pencarian yang membaca stdin mendapat EOF dan tidak macet', async (
 
 test('exit nonzero dengan unknownGames menjadi petunjuk pengaturan, bukan perintah mentah', async () => {
   const detector = new Ludusavi(path.resolve('ludusavi.exe'), '/config', async () => {
-    throw Object.assign(new Error('Command failed: ludusavi find'), { code: 1, stdout: JSON.stringify({ errors: { unknownGames: ['1245629'] }, games: {} }) });
+    throw Object.assign(new Error('Command failed: ludusavi find'), { code: 1, stdout: JSON.stringify({ errors: { unknownGames: ['1245620'] }, games: {} }) });
   });
-  await assert.rejects(detector.discover({ shop: 'steam', objectId: '1245629' }), /Steam ID belum dikenali/);
+  await assert.rejects(detector.discover({ shop: 'steam', objectId: '1245620' }), /Steam ID belum dikenali/);
 });
 
 test('timeout dan kegagalan CLI punya alasan yang dapat ditindaklanjuti', async () => {

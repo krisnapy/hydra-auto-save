@@ -16,6 +16,7 @@ function runYarn(args, options) {
 export async function buildWindows(root, { mode = 'quick', compression = 'normal', reportDir = path.resolve('package'), run = runYarn } = {}) {
   if (!['quick', 'installer'].includes(mode)) throw new Error('Unknown Windows build mode');
   if (!['normal', 'store'].includes(compression)) throw new Error('Unknown compression setting');
+  const { version } = JSON.parse(await fs.readFile(new URL('../package.json', import.meta.url), 'utf8'));
   const started = performance.now();
   const report = { mode, compression, source: process.env.GITHUB_SHA ?? null, stages: [] };
   await fs.mkdir(reportDir, { recursive: true });
@@ -25,7 +26,7 @@ export async function buildWindows(root, { mode = 'quick', compression = 'normal
     report.stages.push(stage);
     console.log(`Starting ${name}`);
     try {
-      await run(args, { cwd: path.resolve(root), env: { ...process.env, HYDRA_BUILD_COMPRESSION: compression } });
+      await run(args, { cwd: path.resolve(root), env: { ...process.env, HYDRA_BUILD_COMPRESSION: compression, HYDRA_PERSONAL_BACKUP_VERSION: version } });
       stage.passed = true;
     } finally {
       stage.seconds = Number(((performance.now() - start) / 1000).toFixed(3));

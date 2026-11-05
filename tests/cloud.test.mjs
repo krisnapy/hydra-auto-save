@@ -85,6 +85,23 @@ test('outbox retries offline, survives restart and never uploads old jobs to a d
   await assert.rejects(fs.stat(restarted.packageFile(job)), { code: 'ENOENT' });
 });
 
+test('queueing the same pending or uploaded version skips history reads and repacking for that drive', async t => {
+  const f = await fixture(t);
+  await f.cloud.enqueue(f.engine, 'steam:1', f.manifest.id);
+  const original = f.engine.versions.bind(f.engine);
+  f.engine.versions = () => { throw new Error('duplicate version should not be read'); };
+  await f.cloud.enqueue(f.engine, 'steam:1', f.manifest.id);
+  f.cloud.state.jobs[0].uploadedAt = new Date().toISOString();
+  await f.cloud.enqueue(f.engine, 'steam:1', f.manifest.id);
+  assert.equal(f.cloud.state.jobs.length, 1);
+  // A different drive must receive its own independent package.
+  f.engine.versions = original;
+  f.cloud.state.driveId = 'drive-B';
+  await f.cloud.enqueue(f.engine, 'steam:1', f.manifest.id);
+  assert.equal(f.cloud.state.jobs.length, 2);
+  assert.equal(f.cloud.state.jobs[1].driveId, 'drive-B');
+});
+
 test('device login handles pending and slow_down without exposing device code or tokens; disconnect drains work', async t => {
   const f = await fixture(t); await f.cloud.disconnect();
   f.cloud.provider.beginLogin = async () => ({ code: 'PRIVATE-DEVICE-CODE', userCode: 'USER-CODE', url: 'https://www.microsoft.com/link', expiresAt: Date.now() + 900000, interval: 5000 });
