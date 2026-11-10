@@ -41,7 +41,7 @@ module.exports = async ({ github, context, core }) => {
   if (!build || build.conclusion !== 'success' || build.head_repository.full_name !== context.repo.owner + '/' + context.repo.repo) throw new Error('Expected successful trusted build');
   const { data: release } = await github.rest.repos.createRelease({
     owner, repo, tag_name: tag, target_commitish: context.sha,
-    name: `Hydra Personal Backup ${version} — Windows x64`, draft: true, prerelease: true,
+    name: `Hydra Personal Backup ${version} — Windows x64`, draft: true, prerelease: false,
     body: [
       'Versi uji awal berbasis Hydra Launcher 4.3.0.', '',
       '## Perubahan 0.3.2',
