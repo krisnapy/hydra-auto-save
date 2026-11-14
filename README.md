@@ -4,13 +4,13 @@ Implementasi awal modul backup untuk salinan kode **Hydra Launcher 4.3.0 di Wind
 
 Draft awal tetap tersedia di [docs/rancangan-auto-backup.md](docs/rancangan-auto-backup.md). Keputusan implementasi awal dan batas verifikasi tercatat di [docs/implementasi.md](docs/implementasi.md). Tahapan berikutnya ada di [roadmap Personal Cloud](docs/roadmap-personal-cloud.md).
 
-Pengembangan 0.3.3: deduplikasi file antarversi OneDrive, antrean biner, retensi cloud otomatis opsional, perbaikan URL unduhan, dan [efisiensi background](docs/efisiensi-background.md). Indeks `.hpb` baru harus disimpan bersama data `.hpd` dan memerlukan pembaca 0.3.3+. Paket penuh lama tetap dapat dibaca. Installer 0.3.3 sedang disiapkan; tautan di bawah masih rilis sebelumnya.
+Perubahan 0.3.3: deduplikasi file antarversi OneDrive, antrean biner, retensi cloud otomatis opsional, perbaikan URL unduhan, dan [efisiensi background](docs/efisiensi-background.md). Indeks `.hpb` baru harus disimpan bersama data `.hpd` dan memerlukan pembaca 0.3.3+. Paket penuh lama tetap dapat dibaca. Installer 0.3.3 sudah terbit; rilis lama tetap tersedia.
 
 Perubahan 0.3.2: [optimisasi alur dan ukuran backup](docs/optimisasi-penyimpanan.md), meliputi kompresi adaptif, penggunaan ulang isi backup terverifikasi dan pencegahan pengemasan unggahan duplikat. Tombol **Optimalkan backup lokal** dan **Optimalkan backup cloud** memeriksa riwayat dan meminta konfirmasi sebelum memproses versi lama. Backup terkompresi baru memerlukan pembaca lokal baru; backup lama dan transport `.hpb` tetap didukung.
 
 ## Paket Windows tanpa Node.js
 
-**[Unduh setup 0.3.2](https://github.com/krisnapy/hydra-auto-save/releases/download/v0.3.2/Hydra-Personal-Backup-0.3.2-hydra-4.3.0-windows-x64-setup.exe)** (sekitar208 MB) · [Portable, panduan dan checksum](https://github.com/krisnapy/hydra-auto-save/releases/tag/v0.3.2). Unduhan tidak memerlukan login GitHub. Rilis lama tetap dipertahankan. Build, checksum, pembukaan aplikasi/tray serta tampilan Windows telah lulus; lihat [laporan pengujian](docs/pengujian-tampilan.md).
+**[Unduh setup 0.3.3](https://github.com/krisnapy/hydra-auto-save/releases/download/v0.3.3/Hydra-Personal-Backup-0.3.3-hydra-4.3.0-windows-x64-setup.exe)** (sekitar208 MB) · [Portable, panduan dan checksum](https://github.com/krisnapy/hydra-auto-save/releases/tag/v0.3.3). Unduhan tidak memerlukan login GitHub. Rilis lama tetap dipertahankan. Build, checksum, pembukaan aplikasi/tray serta tampilan Windows telah lulus; lihat [laporan pengujian](docs/pengujian-tampilan.md).
 
 0.3.1 memperbaiki alamat login OneDrive dengan mengikuti respons Microsoft, menyusun Personal Cloud menjadi satu kolom, serta menyembunyikan input Client ID. Tombol Hubungkan OneDrive memakai konfigurasi bawaan/tersimpan.
 
@@ -86,10 +86,10 @@ Mematikan Auto Backup menghentikan penjadwalan berikutnya. Operasi yang sudah be
 
 ## Batas versi ini
 
-Pengujian tampilan halaman game tersedia dalam [galeri dan laporan visual](docs/pengujian-tampilan.md): 34 pemeriksaan panel/interaksi pada dua ukuran jendela serta screenshot halaman game di aplikasi Windows telah lulus. Skenario backup/pemulihan visual memakai data contoh; belum menggantikan uji save game nyata.
+Pengujian tampilan halaman game tersedia dalam [galeri dan laporan visual](docs/pengujian-tampilan.md): 36 pemeriksaan panel/interaksi pada dua ukuran jendela serta screenshot halaman game di aplikasi Windows telah lulus. Skenario backup/pemulihan visual memakai data contoh; belum menggantikan uji save game nyata.
 
 - Installer dan portable `.exe` berhasil dibuat. Aplikasi portable berhasil dibuka di Windows CI; layanan backup, renderer lokal, pengaturan backup, dan Ludusavi bawaan terverifikasi. Instalasi interaktif di PC pengguna, game nyata, dan sinkronisasi OneDrive/Google Drive/Dropbox/pCloud belum diuji.
-- Sebanyak 104 pengujian modul lulus di Windows dan lokal. Pemeriksaan tipe seluruh Hydra terintegrasi serta build Windows lulus. Ini belum membuktikan konsistensi save semua game.
+- Sebanyak 118 pengujian modul lulus di Windows dan lokal. Pemeriksaan tipe seluruh Hydra terintegrasi serta build Windows lulus. Ini belum membuktikan konsistensi save semua game.
 - Ludusavi 0.29.0 asli telah diuji untuk pencarian Steam ID, judul persis, preview file save contoh, penanganan ID tidak dikenal, dan unduhan database. ID `1245620`, `292030`, dan `3751260` dikenali database; lokasi save nyata pada PC pengguna tetap perlu diuji. Database diunduh pada penggunaan pertama.
 - Lokasi save relatif terhadap folder instalasi bergantung pada root instalasi yang dapat dikenali Ludusavi; lokasi instalasi Hydra belum diteruskan sebagai root pemindaian. Gunakan lokasi manual jika file tersebut belum ditemukan.
 - Backup/riwayat yang ditawarkan untuk pemulihan hanya milik perangkat saat ini. Backup perangkat lain tetap terpisah; pemindahan/pemulihan lintas perangkat belum tersedia.
@@ -99,7 +99,7 @@ Pengujian tampilan halaman game tersedia dalam [galeri dan laporan visual](docs/
 - Symlink/junction dan folder yang saling bertumpuk ditolak. File Registry, save terlindungi/terenkripsi, dan file cloud yang belum tersedia secara lokal dapat memerlukan penanganan lain.
 - Pemantauan file otomatis disegarkan setiap 60 detik. Penambahan slot save dapat terlambat ditemukan hingga pemindaian berikutnya. Jika semua lokasi save hilang, backup normal ditolak untuk menjaga riwayat lama.
 - Mengubah lokasi save manual dapat membuat versi dari lokasi lama tidak dapat dipulihkan sampai pengaturan yang cocok dipilih kembali.
-- Backup lokal belum dibatasi kuota total dan riwayat pengaman dapat terus memakai ruang disk. Paket OneDrive memakai gzip, batas 32 MiB save per versi, serta batas antrean 512 MiB/1.000 pekerjaan. Retensi cloud otomatis tersedia sebagai pilihan dengan konfirmasi; backup pengaman tetap dipertahankan.
+- Backup lokal belum dibatasi kuota total dan riwayat pengaman dapat terus memakai ruang disk. Versi OneDrive baru memakai indeks .hpb dan data bersama .hpd dengan kompresi adaptif, batas 32 MiB save per versi, serta batas antrean 512 MiB/1.000 pekerjaan. Retensi cloud otomatis tersedia sebagai pilihan dengan konfirmasi; backup pengaman tetap dipertahankan.
 - Jika pemulihan terputus dan catatan pemulihan masih ada, pemulihan berikutnya diblokir. Pertahankan catatan, backup pengaman, serta folder `.hydra-previous-…` untuk pemeriksaan; jangan menghapusnya tanpa memastikan progres yang akan dipertahankan.
 
 ## Pemeriksaan integrasi tambahan

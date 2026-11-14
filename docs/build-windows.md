@@ -33,3 +33,10 @@ Ini pengukuran job pada runner berbeda, tanpa waktu antrean dan tanpa menambahka
 Kompresi bawaan tetap `normal`. Pilihan `store` sudah tersedia untuk percobaan manual; perbandingan kecepatan/ukuran installer `store` belum dijalankan. Bun dan runtime pengguna tidak diubah. Percobaan awal audit gagal karena pemisah jalur Windows; pembacaan metadata diperbaiki dan kedua jalur final lulus.
 
 [Verifikasi checksum dan portable](https://github.com/krisnapy/hydra-auto-save/actions/runs/41250646812) serta [28 tes UI dan halaman game Windows](https://github.com/krisnapy/hydra-auto-save/actions/runs/41250646772) juga lulus pada sumber akhir. Artifact installer terpisah sekitar 205,9 MB dan portable 205,7 MB (ukuran ZIP artifact, bukan ukuran folder aplikasi). Repo tetap privat dan publikasi rilis publik dilewati. Tautan unduhan terverifikasi terbaru ada di README.
+
+
+## Rilis 0.3.3 — 15 November 2026 WITA
+
+Sumber executable: `5965683fdbb17558fe92f26b285ea4b90037fed2`. [Build installer](https://github.com/krisnapy/hydra-auto-save/actions/runs/43616693585), [quick check](https://github.com/krisnapy/hydra-auto-save/actions/runs/43616693506), [verifikasi portable/checksum dan unduhan anonim](https://github.com/krisnapy/hydra-auto-save/actions/runs/43617227568), serta [36 tes tampilan dan halaman game Windows](https://github.com/krisnapy/hydra-auto-save/actions/runs/43617227545) lulus. Sebanyak 118 tes modul dan pemeriksaan tipe seluruh Hydra lulus pada build Windows. Instalasi interaktif pengguna, OneDrive nyata, dan save game nyata belum diuji.
+
+[Rilis publik 0.3.3](https://github.com/krisnapy/hydra-auto-save/releases/tag/v0.3.3) berstatus reguler dan menjadi Latest, dengan setup 207.905.884 byte, portable 207.669.834 byte, panduan, dan checksum. Rilis sebelumnya dipertahankan.
