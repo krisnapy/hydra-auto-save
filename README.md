@@ -4,7 +4,7 @@ Implementasi awal modul backup untuk salinan kode **Hydra Launcher 4.3.0 di Wind
 
 Draft awal tetap tersedia di [docs/rancangan-auto-backup.md](docs/rancangan-auto-backup.md). Keputusan implementasi awal dan batas verifikasi tercatat di [docs/implementasi.md](docs/implementasi.md). Tahapan berikutnya ada di [roadmap Personal Cloud](docs/roadmap-personal-cloud.md).
 
-Perubahan 0.3.5: batas isi save OneDrive dinaikkan menjadi **128 MiB per versi** (10.000 file), dengan batas paket/pembacaan 192 MiB. Perbaikan mencakup unggahan dan pemulihan. Installer baru sedang disiapkan; tautan di bawah masih 0.3.4 yang memiliki batas 32 MiB. Setelah memasang 0.3.5, gunakan **Unggah backup terbaru / coba lagi** untuk mengantrekan ulang versi lokal yang sebelumnya terlalu besar. Backup di atas 32 MiB memerlukan pembaca 0.3.5+ untuk pemulihan.
+Perubahan 0.3.5: batas isi save OneDrive dinaikkan menjadi **128 MiB per versi** (10.000 file), dengan batas paket/pembacaan 192 MiB. Perbaikan mencakup unggahan dan pemulihan. Installer 0.3.5 sudah terbit; 128 tes modul dan pemeriksaan Windows lulus. Setelah memasang 0.3.5, gunakan **Unggah backup terbaru / coba lagi** untuk mengantrekan ulang versi lokal yang sebelumnya terlalu besar. Backup di atas 32 MiB memerlukan pembaca 0.3.5+ untuk pemulihan.
 
 Perubahan 0.3.4: [folder OneDrive per nama game dan perangkat](docs/folder-onedrive.md), kompatibilitas baca lokasi lama, serta pesan kegagalan yang menyebut game dan ukuran save. Installer 0.3.4 sudah terbit. Folder baru muncul setelah unggahan baru berhasil; backup lama tetap dibaca dari lokasi semula. Batas pada 0.3.4 adalah 32 MiB dan 10.000 file per versi.
 
@@ -14,7 +14,7 @@ Perubahan 0.3.2: [optimisasi alur dan ukuran backup](docs/optimisasi-penyimpanan
 
 ## Paket Windows tanpa Node.js
 
-**[Unduh setup 0.3.4](https://github.com/krisnapy/hydra-auto-save/releases/download/v0.3.4/Hydra-Personal-Backup-0.3.4-hydra-4.3.0-windows-x64-setup.exe)** (sekitar 208 MB) · [Portable, panduan dan checksum](https://github.com/krisnapy/hydra-auto-save/releases/tag/v0.3.4). Unduhan tidak memerlukan login GitHub. Rilis lama tetap dipertahankan. Build, checksum, pembukaan aplikasi/tray serta tampilan Windows telah lulus; lihat [laporan pengujian](docs/pengujian-tampilan.md).
+**[Unduh setup 0.3.5](https://github.com/krisnapy/hydra-auto-save/releases/download/v0.3.5/Hydra-Personal-Backup-0.3.5-hydra-4.3.0-windows-x64-setup.exe)** (sekitar 208 MB) · [Portable, panduan dan checksum](https://github.com/krisnapy/hydra-auto-save/releases/tag/v0.3.5). Unduhan tidak memerlukan login GitHub. Rilis lama tetap dipertahankan. Build, checksum, pembukaan aplikasi/tray serta tampilan Windows telah lulus; lihat [laporan pengujian](docs/pengujian-tampilan.md).
 
 0.3.1 memperbaiki alamat login OneDrive dengan mengikuti respons Microsoft, menyusun Personal Cloud menjadi satu kolom, serta menyembunyikan input Client ID. Tombol Hubungkan OneDrive memakai konfigurasi bawaan/tersimpan.
 
