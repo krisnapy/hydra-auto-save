@@ -11,7 +11,7 @@ Paket khusus Hydra 4.3.0 dengan Personal Cloud Backup. Memerlukan Windows 10/11 
 
 Pada 0.3.4, backup OneDrive baru dikelompokkan ke folder **nama game [ID singkat] → nama PC [ID perangkat]** di folder aplikasi OneDrive. Backup lama tetap dibaca dari lokasi semula dan tidak dipindahkan otomatis. Jangan menghapus lokasi lama: data di sana mungkin masih dipakai versi baru. Pertahankan `.hpb` dan `.hpd` bersama; folder baru memerlukan aplikasi 0.3.4 atau lebih baru untuk pemulihan. File internal tetap memiliki nama identitas untuk verifikasi.
 
-Pesan batas unggahan menyebut game, ukuran save dan jumlah file. Batas tetap 32 MiB dan 10.000 file per versi sebelum kompresi; melepas akun tidak mengubah batas itu. Bila folder yang terdeteksi terlalu luas, periksa **Buka folder save** dan tentukan lokasi yang benar. Backup lokal tetap tersedia.
+Pesan batas unggahan menyebut game, ukuran save dan jumlah file. Mulai 0.3.5 batas menjadi 128 MiB dan 10.000 file per versi sebelum kompresi; melepas akun tidak mengubah batas itu. Bila folder yang terdeteksi terlalu luas, periksa **Buka folder save** dan tentukan lokasi yang benar. Backup lokal tetap tersedia. Setelah memperbarui aplikasi, pilih **Unggah backup terbaru / coba lagi** pada panel OneDrive untuk mengantrekan ulang versi lokal yang dahulu ditolak. Backup lebih dari 32 MiB memerlukan aplikasi 0.3.5+ untuk pemulihan; jangan kembali ke versi lama untuk operasi cloud.
 
 Database lokasi save diunduh pada penggunaan pertama; setelah itu deteksi memakai cache. Internet diperlukan untuk unduhan awal. **Backup lokal selesai** belum membuktikan unggahan cloud selesai; periksa panel OneDrive untuk unggahan langsung, atau aplikasi cloud untuk folder sinkronisasi.
 

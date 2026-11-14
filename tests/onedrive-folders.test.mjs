@@ -186,7 +186,7 @@ test('upload limit diagnostics identify game, actual size and count without chan
   cloud.connected = true; cloud.state = { driveId: 'drive-A', jobs: [] };
   await cloud.backupCompleted(engine, 'steam:1', { id: 'version' });
   assert.match(cloud.error, /ELDEN RING \(steam:1\)/);
-  assert.match(cloud.error, /32\.00 MiB dengan 1 file/);
+  assert.match(cloud.error, /128\.00 MiB dengan 1 file/);
   assert.match(cloud.error, /Backup lokal tetap tersedia/);
   const many = { files: Array.from({ length: 10001 }, () => ({ bytes: 0 })), roots: [] };
   await assert.rejects(packVersion({ versions: async () => [many] }, 'steam:1', 'version'), /10\.001 file/);

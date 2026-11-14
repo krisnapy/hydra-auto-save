@@ -27,7 +27,7 @@ Lihat versi OneDrive pada halaman game → Unduh ke riwayat → konfirmasi unduh
 
 ## Batas dan perlindungan
 
-- Maksimum 32 MiB isi save dan 10.000 file per versi, 48 MiB paket/metadata setelah ekstraksi; format JSON+gzip dengan blob berdasarkan SHA-256. Save lebih besar tetap dibackup lokal, tetapi tidak masuk cloud.
+- Maksimum 128 MiB isi save dan 10.000 file per versi, 192 MiB paket/metadata setelah ekstraksi; format JSON+gzip dengan blob berdasarkan SHA-256. Save lebih besar tetap dibackup lokal, tetapi tidak masuk cloud.
 - Antrean maksimal 512 MiB / 1.000 pekerjaan tertunda. Kegagalan antrean ditampilkan terpisah dan dapat dicoba kembali dari backup lokal terbaru.
 - Hanya versi perangkat yang sama dan konfigurasi root save yang sama yang dapat diunduh/dipulihkan. Jangan hapus profil Hydra bila ingin tetap mengenali identitas perangkat. Pemetaan antar-PC dijadwalkan 0.4.
 - Riwayat cloud belum dipangkas otomatis. Perhatikan kapasitas OneDrive. Paket berisi save tanpa enkripsi ujung-ke-ujung; akun OneDrive mengontrol aksesnya.

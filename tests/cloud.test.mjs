@@ -199,3 +199,18 @@ test('OneDrive download falls back to a manual Graph redirect when metadata omit
   }
   assert.equal(signedRequests, 1);
 });
+
+test('legacy package larger than 48 MiB decoded still imports and verifies content', async t => {
+  const f = await fixture(t);
+  const data = Buffer.alloc(Math.round(67.82 * 1024 ** 2), 0x51);
+  await fs.writeFile(path.join(f.save, 'slot.sav'), data);
+  const version = await f.engine.backup('steam:1', f.roots);
+  const bytes = await packVersion(f.engine, 'steam:1', version.id);
+  const decoded = await unzip(bytes);
+  assert.ok(decoded.length > 48 * 1024 ** 2);
+  await fs.rm(path.join(f.engine.directory('steam:1'), version.id), { recursive: true });
+  await importVersion(f.engine, 'steam:1', f.roots, bytes);
+  await fs.writeFile(path.join(f.save, 'slot.sav'), 'changed');
+  await f.engine.restore('steam:1', f.roots, version.id, true);
+  assert.equal(digest(await fs.readFile(path.join(f.save, 'slot.sav'))), digest(data));
+});

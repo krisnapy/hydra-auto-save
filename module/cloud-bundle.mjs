@@ -5,8 +5,10 @@ import { promisify } from 'node:util';
 import { randomUUID } from 'node:crypto';
 import { digest, safePath, readBackupBlob, portableManifest } from './engine.mjs';
 
-export const SAVE_LIMIT = 32 * 1024 ** 2;
-export const BUNDLE_LIMIT = 48 * 1024 ** 2;
+// Keep bounded memory use and leave room for base64 legacy exports/metadata.
+// 192 MiB also stays below Graph simple-upload's 250 MB per-file limit.
+export const SAVE_LIMIT = 128 * 1024 ** 2;
+export const BUNDLE_LIMIT = 192 * 1024 ** 2;
 const zip = promisify(gzip), unzip = promisify(gunzip);
 const invalid = () => new Error('Paket cloud rusak, tidak lengkap, atau tidak sesuai perangkat/lokasi save.');
 
@@ -66,7 +68,7 @@ export async function packVersion(engine, gameId, versionId, { shared = false } 
   // outbox whose index can reference shared objects on the remote drive.
   const manifest = portableManifest(local);
   const saveBytes = manifest.files.reduce((n, f) => n + f.bytes, 0);
-  if (manifest.files.length > 10000 || saveBytes > SAVE_LIMIT) throw new Error(`Save berukuran ${(saveBytes / 1024 ** 2).toFixed(2)} MiB dengan ${manifest.files.length.toLocaleString('id-ID')} file. Batas unggahan: 32 MiB dan 10.000 file per versi. Periksa apakah lokasi save mencakup folder yang terlalu luas. Backup lokal tetap tersedia.`);
+  if (manifest.files.length > 10000 || saveBytes > SAVE_LIMIT) throw new Error(`Save berukuran ${(saveBytes / 1024 ** 2).toFixed(2)} MiB dengan ${manifest.files.length.toLocaleString('id-ID')} file. Batas unggahan: ${SAVE_LIMIT / 1024 ** 2} MiB dan 10.000 file per versi. Periksa apakah lokasi save mencakup folder yang terlalu luas. Backup lokal tetap tersedia.`);
   const blobs = {};
   const objects = [];
   for (const entry of manifest.files) {

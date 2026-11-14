@@ -17,7 +17,7 @@ Pembacaan dan daftar riwayat mencakup folder lama serta folder game/perangkat ya
 
 Folder dibuat dengan penanganan konflik tanpa mengganti folder yang sudah ada. Operasi penghapusan memakai lokasi hasil pemeriksaan dan ETag, serta tetap mengikuti perlindungan riwayat/pengaman yang ada. Cache lokasi dibuang saat pergantian identitas akun atau putus koneksi. ID perangkat tetap unik per PC; pemulihan lintas perangkat belum ditambahkan.
 
-Pesan kegagalan unggahan sekarang menyebut nama dan ID game. Jika batas terlampaui, pesan memuat ukuran save dan jumlah file yang terdeteksi. Batas tetap **32 MiB dan 10.000 file per versi**, dihitung sebelum kompresi; melepas/menghubungkan akun tidak mengubah batas tersebut. Periksa lokasi save jika folder yang dipilih ternyata terlalu luas. Backup lokal tetap tersedia.
+Pesan kegagalan unggahan sekarang menyebut nama dan ID game. Jika batas terlampaui, pesan memuat ukuran save dan jumlah file yang terdeteksi. Mulai 0.3.5 batas menjadi **128 MiB dan 10.000 file per versi** (0.3.4: 32 MiB), dihitung sebelum kompresi; melepas/menghubungkan akun tidak mengubah batas tersebut. Periksa lokasi save jika folder yang dipilih ternyata terlalu luas. Backup lokal tetap tersedia.
 
 Pengujian memakai simulasi Graph untuk folder, unggahan, daftar riwayat, unduhan, konflik, ETag, akun, serta pemulihan dan retensi pada campuran data lama/baru. Belum menjalankan operasi folder pada akun OneDrive nyata.
 

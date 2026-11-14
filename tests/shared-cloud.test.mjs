@@ -195,3 +195,34 @@ test('legacy pending packages still upload after restart and cloud imports use a
   assert.equal(imported.id, version.id); assert.equal(imported.schema, 2);
   assert.ok(imported.compressed.length > 0);
 });
+
+test('67.82 MiB across 77 files uploads, downloads and restores without the old 32/48 MiB caps', async t => {
+  const f = await fixture(t);
+  await fs.rm(f.save, { recursive: true }); await fs.mkdir(f.save);
+  const total = Math.round(67.82 * 1024 ** 2), expected = new Map();
+  for (let i = 0, remaining = total; i < 77; i++) {
+    const size = Math.min(Math.ceil(total / 77), remaining);
+    const data = randomBytes(size), name = `slot-${i}.sav`;
+    expected.set(name, digest(data));
+    await fs.writeFile(path.join(f.save, name), data); remaining -= size;
+  }
+  const version = await f.controller.backup('steam:1');
+  assert.equal(version.files.length, 77);
+  assert.equal(version.files.reduce((n, file) => n + file.bytes, 0), total);
+  assert.equal(f.cloud.error, '');
+  assert.equal(f.cloud.state.jobs.length, 1);
+  assert.ok(f.cloud.state.jobs[0].bytes > 48 * 1024 ** 2, 'incompressible outbox exceeds the old package limit');
+  await f.cloud.tick(); assert.equal(f.cloud.error, '');
+  assert.ok(f.cloud.state.jobs[0].uploadedAt);
+  await fs.rm(f.controller.engine.directory('steam:1'), { recursive: true });
+  await fs.rm(f.save, { recursive: true }); await fs.mkdir(f.save);
+  await fs.writeFile(path.join(f.save, 'current.sav'), 'new-progress');
+  await f.cloud.list('steam:1');
+  const remote = f.cloud.snapshot('steam:1').versions.find(item => item.name.includes(version.id));
+  await f.cloud.download('steam:1', remote.name);
+  assert.equal(await fs.readFile(path.join(f.save, 'current.sav'), 'utf8'), 'new-progress');
+  await f.controller.restore('steam:1', version.id, true);
+  assert.equal((await fs.readdir(f.save)).length, 77);
+  for (const [name, hash] of expected) assert.equal(digest(await fs.readFile(path.join(f.save, name))), hash);
+  assert.ok((await f.controller.engine.versions('steam:1')).some(item => item.safety));
+});
