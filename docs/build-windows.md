@@ -40,3 +40,10 @@ Kompresi bawaan tetap `normal`. Pilihan `store` sudah tersedia untuk percobaan m
 Sumber executable: `5965683fdbb17558fe92f26b285ea4b90037fed2`. [Build installer](https://github.com/krisnapy/hydra-auto-save/actions/runs/43616693585), [quick check](https://github.com/krisnapy/hydra-auto-save/actions/runs/43616693506), [verifikasi portable/checksum dan unduhan anonim](https://github.com/krisnapy/hydra-auto-save/actions/runs/43617227568), serta [36 tes tampilan dan halaman game Windows](https://github.com/krisnapy/hydra-auto-save/actions/runs/43617227545) lulus. Sebanyak 118 tes modul dan pemeriksaan tipe seluruh Hydra lulus pada build Windows. Instalasi interaktif pengguna, OneDrive nyata, dan save game nyata belum diuji.
 
 [Rilis publik 0.3.3](https://github.com/krisnapy/hydra-auto-save/releases/tag/v0.3.3) berstatus reguler dan menjadi Latest, dengan setup 207.905.884 byte, portable 207.669.834 byte, panduan, dan checksum. Rilis sebelumnya dipertahankan.
+
+
+## Rilis 0.3.4 — 15 November 2026 WITA
+
+Sumber executable: `03b6a159c971cfcf83f1b792cad053dfb63da30d`. [Build installer](https://github.com/krisnapy/hydra-auto-save/actions/runs/43623323794), [quick check](https://github.com/krisnapy/hydra-auto-save/actions/runs/43623323786), [verifikasi portable/checksum dan unduhan anonim](https://github.com/krisnapy/hydra-auto-save/actions/runs/43623886231), serta [36 tes tampilan dan halaman game Windows](https://github.com/krisnapy/hydra-auto-save/actions/runs/43623886282) lulus. Sebanyak 126 tes modul dan pemeriksaan tipe seluruh Hydra lulus pada build Windows.
+
+[Rilis publik 0.3.4](https://github.com/krisnapy/hydra-auto-save/releases/tag/v0.3.4) berstatus reguler dan menjadi Latest saat diverifikasi, dengan setup 207.908.483 byte, portable 207.672.416 byte, panduan, dan checksum. Rilis sebelumnya dipertahankan. Folder baru per game/perangkat diuji memakai simulasi Graph, termasuk pemulihan dan retensi campuran data lama/baru. Instalasi interaktif pengguna, akun OneDrive nyata, dan save game nyata belum diuji.

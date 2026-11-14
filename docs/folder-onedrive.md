@@ -1,6 +1,6 @@
 # Folder OneDrive per game — 0.3.4
 
-Disiapkan untuk installer 0.3.4. Rilis 0.3.3 masih menyimpan backup di folder aplikasi tanpa pengelompokan fisik per game. Folder baru memerlukan pembaca 0.3.4 atau lebih baru.
+Tersedia di installer 0.3.4. Rilis 0.3.3 masih menyimpan backup di folder aplikasi tanpa pengelompokan fisik per game. Folder baru memerlukan pembaca 0.3.4 atau lebih baru. Setelah menggunakan susunan baru, gunakan versi tersebut atau lebih baru untuk operasi cloud; versi lama tidak dapat menghitung seluruh rujukan data di folder baru.
 
 Unggahan baru memakai struktur berikut di dalam folder aplikasi OneDrive yang sudah ada:
 
