@@ -76,12 +76,17 @@ test('outbox retries offline, survives restart and never uploads old jobs to a d
   const restarted = await new CloudSync({ directory: f.cloud.directory, controller: f.controller, vault: f.vault }).init();
   t.after(() => restarted.stop());
   let calls = 0;
+  const uploaded = new Map();
+  restarted.provider.download = async name => {
+    if (!uploaded.has(name)) throw Object.assign(new Error('missing'), { status: 404 });
+    return uploaded.get(name);
+  };
   restarted.provider.identity = async () => 'drive-B';
-  restarted.provider.upload = async (_, bytes) => { calls++; assert.ok(bytes.length > 0); return 'remote-id'; };
+  restarted.provider.upload = async (name, bytes) => { calls++; assert.ok(bytes.length > 0); uploaded.set(name, bytes); return 'remote-id'; };
   restarted.state.jobs[0].nextAt = 0;
   await restarted.tick(); assert.equal(calls, 0); assert.match(restarted.error, /berbeda/);
   restarted.provider.identity = async () => 'drive-A'; restarted.state.jobs[0].nextAt = 0;
-  await restarted.tick(); assert.equal(calls, 1); assert.ok(restarted.state.jobs[0].uploadedAt);
+  await restarted.tick(); assert.equal(calls, 2); assert.ok(restarted.state.jobs[0].uploadedAt);
   await assert.rejects(fs.stat(restarted.packageFile(job)), { code: 'ENOENT' });
 });
 
@@ -167,4 +172,30 @@ test('signed downloads do not receive bearer tokens and reject untrusted origins
   assert.equal((await provider.download(name)).toString(), 'package'); assert.equal(signed, true);
   provider.fetcher = async () => Response.json({ name, size: 7, '@microsoft.graph.downloadUrl': 'http://localhost/private' });
   await assert.rejects(provider.download(name), /tidak dikenali/);
+});
+
+test('OneDrive download falls back to a manual Graph redirect when metadata omits the URL', async () => {
+  const name = `${digest('steam:1')}_${randomUUID()}_version-1_${digest('package')}.hpb`;
+  const graphItem = `https://graph.microsoft.com/v1.0/me/drive/special/approot:/${name}`;
+  const signed = 'https://test.files.1drv.com/download';
+  let location = signed;
+  let signedRequests = 0;
+  const provider = new OneDrive({ clientId, loadTokens: async () => ({ access: 'PRIVATE', expiresAt: Date.now() + 999999 }), saveTokens: async () => {}, fetcher: async (url, options) => {
+    if (url === `${graphItem}?$select=name,size,@microsoft.graph.downloadUrl`) return Response.json({ name, size: 7 });
+    if (url === `${graphItem}:/content`) {
+      assert.equal(options.redirect, 'manual');
+      assert.equal(options.headers.Authorization, 'Bearer PRIVATE');
+      return new Response(null, { status: 302, headers: location ? { location } : {} });
+    }
+    assert.equal(url, signed);
+    assert.equal(options.headers, undefined);
+    assert.equal(options.redirect, 'error');
+    signedRequests++;
+    return new Response('package');
+  } });
+  assert.equal((await provider.download(name)).toString(), 'package');
+  for (location of [null, 'malformed', 'https://untrusted.example/download']) {
+    await assert.rejects(provider.download(name), /Alamat unduhan OneDrive tidak (valid|dikenali)/);
+  }
+  assert.equal(signedRequests, 1);
 });

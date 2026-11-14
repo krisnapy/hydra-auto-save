@@ -6,11 +6,13 @@ const GRAPH = 'https://graph.microsoft.com/v1.0/';
 const SCOPE = 'https://graph.microsoft.com/Files.ReadWrite.AppFolder offline_access';
 export const validClientId = id => typeof id === 'string' && /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(id);
 export const cloudName = name => typeof name === 'string' && /^[a-f0-9]{64}_[a-f0-9-]{36}_[a-zA-Z0-9-]{1,100}_[a-f0-9]{64}\.hpb$/.test(name);
+export const objectName = name => typeof name === 'string' && /^[a-f0-9]{64}_[a-f0-9-]{36}_blob_[a-f0-9]{64}\.hpd$/.test(name);
+const storageName = name => cloudName(name) || objectName(name);
 
 export class OneDrive {
   constructor({ clientId, loadTokens, saveTokens, fetcher = fetch }) { Object.assign(this, { clientId, loadTokens, saveTokens, fetcher }); }
-  async request(url, options = {}) {
-    try { return await this.fetcher(url, { ...options, signal: AbortSignal.timeout(60000), redirect: 'error' }); }
+  async request(url, { redirect = 'error', ...options } = {}) {
+    try { return await this.fetcher(url, { ...options, signal: AbortSignal.timeout(60000), redirect }); }
     catch { throw new Error('OneDrive belum dapat dihubungi. Periksa koneksi; antrean lokal dipertahankan.'); }
   }
   async oauth(endpoint, values) {
@@ -52,11 +54,11 @@ export class OneDrive {
     })().finally(() => { this.refreshing = undefined; });
     return this.refreshing;
   }
-  async graph(relative, options = {}) {
+  async graph(relative, options = {}, expectedStatus) {
     const response = await this.request(GRAPH + relative, { ...options, headers: { ...options.headers, Authorization: `Bearer ${await this.access()}` } });
-    if (!response.ok) {
+    if (expectedStatus === undefined ? !response.ok : response.status !== expectedStatus) {
       const delay = Math.min(3600000, Math.max(0, Number(response.headers.get('retry-after')) || 0) * 1000);
-      throw Object.assign(new Error(response.status === 401 ? 'Sesi OneDrive berakhir. Hubungkan kembali akun.' : response.status === 507 ? 'Ruang OneDrive tidak cukup. Backup lokal tetap tersedia.' : `OneDrive gagal merespons (${response.status}). Antrean dipertahankan.`), { retryAfter: delay });
+      throw Object.assign(new Error(response.status === 401 ? 'Sesi OneDrive berakhir. Hubungkan kembali akun.' : response.status === 507 ? 'Ruang OneDrive tidak cukup. Backup lokal tetap tersedia.' : `OneDrive gagal merespons (${response.status}). Antrean dipertahankan.`), { retryAfter: delay, status: response.status });
     }
     return response;
   }
@@ -67,18 +69,18 @@ export class OneDrive {
     return driveId;
   }
   async upload(name, bytes) {
-    if (!cloudName(name) || bytes.length > BUNDLE_LIMIT) throw new Error('Paket unggahan tidak valid.');
+    if (!storageName(name) || bytes.length > BUNDLE_LIMIT) throw new Error('Paket unggahan tidak valid.');
     const item = await (await this.graph(`me/drive/special/approot:/${name}:/content`, { method: 'PUT', headers: { 'Content-Type': 'application/octet-stream' }, body: bytes })).json();
     if (item.name !== name || item.size !== bytes.length || !item.id) throw new Error('Hasil unggahan OneDrive belum dapat diverifikasi.');
     return item.id;
   }
-  async list(prefix) {
+  async list(prefix, { objects = false } = {}) {
     let relative = 'me/drive/special/approot/children?$select=id,name,size,eTag,lastModifiedDateTime&$top=200';
     const result = [];
     for (let page = 0; relative && page < 100; page++) {
       const data = await (await this.graph(relative)).json();
       if (!Array.isArray(data.value)) throw new Error('Daftar OneDrive tidak valid.');
-      result.push(...data.value.filter(item => cloudName(item.name) && item.name.startsWith(prefix) && Number.isSafeInteger(item.size) && item.size >= 0 && item.size <= BUNDLE_LIMIT));
+      result.push(...data.value.filter(item => (objects ? storageName(item.name) : cloudName(item.name)) && item.name.startsWith(prefix) && Number.isSafeInteger(item.size) && item.size >= 0 && item.size <= BUNDLE_LIMIT));
       const next = data['@odata.nextLink'];
       if (next && (!next.startsWith(GRAPH + 'me/drive/special/approot/children?'))) throw new Error('Alamat lanjutan OneDrive tidak valid.');
       relative = next ? next.slice(GRAPH.length) : '';
@@ -87,16 +89,23 @@ export class OneDrive {
     return result;
   }
   async remove(name, eTag) {
-    if (!cloudName(name) || typeof eTag !== 'string' || !eTag || eTag.length > 1000 || /[\r\n]/.test(eTag)) throw new Error('Identitas versi cloud belum dapat dipastikan. Muat ulang pemeriksaan optimisasi.');
+    if (!storageName(name) || typeof eTag !== 'string' || !eTag || eTag.length > 1000 || /[\r\n]/.test(eTag)) throw new Error('Identitas versi cloud belum dapat dipastikan. Muat ulang pemeriksaan optimisasi.');
     const response = await this.graph(`me/drive/special/approot:/${name}`, { method: 'DELETE', headers: { 'If-Match': eTag } });
     if (response.status !== 204) throw new Error('Hasil pembersihan OneDrive belum dapat dipastikan. Periksa ulang daftar versi.');
   }
   async download(name) {
-    if (!cloudName(name)) throw new Error('Nama versi cloud tidak valid.');
-    // Graph redirects /content to a signed download URL. Never forward Authorization there.
-    const metadata = await (await this.graph(`me/drive/special/approot:/${name}?$select=name,size,@microsoft.graph.downloadUrl`)).json();
-    if (metadata.name !== name || !Number.isSafeInteger(metadata.size) || metadata.size > BUNDLE_LIMIT) throw new Error('Ukuran paket cloud tidak valid.');
-    const url = new URL(metadata['@microsoft.graph.downloadUrl']);
+    if (!storageName(name)) throw new Error('Nama versi cloud tidak valid.');
+    const item = `me/drive/special/approot:/${name}`;
+    const metadata = await (await this.graph(`${item}?$select=name,size,@microsoft.graph.downloadUrl`)).json();
+    if (metadata.name !== name || !Number.isSafeInteger(metadata.size) || metadata.size < 0 || metadata.size > BUNDLE_LIMIT) throw new Error('Ukuran paket cloud tidak valid.');
+    let address = metadata['@microsoft.graph.downloadUrl'];
+    if (address == null || address === '') {
+      // Read the redirect in the main process so Authorization stays on Graph.
+      const redirect = await this.graph(`${item}:/content`, { redirect: 'manual' }, 302);
+      address = redirect.headers.get('location');
+    }
+    if (typeof address !== 'string' || !URL.canParse(address)) throw new Error('Alamat unduhan OneDrive tidak valid. Muat ulang daftar versi lalu coba lagi.');
+    const url = new URL(address);
     if (url.protocol !== 'https:' || url.username || url.password || url.port || !(url.hostname.endsWith('.files.1drv.com') || url.hostname.endsWith('.1drv.com') || url.hostname.endsWith('.sharepoint.com') || url.hostname.endsWith('.storage.live.com'))) throw new Error('Alamat unduhan OneDrive tidak dikenali.');
     const response = await this.request(url.href);
     if (!response.ok) throw new Error('Unduhan OneDrive gagal. Coba muat ulang daftar versi.');

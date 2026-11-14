@@ -94,4 +94,6 @@
 .personal-backup__onedrive { margin-top: 18px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,.1); display: grid; gap: 10px; min-width: 0; }
 .personal-backup__onedrive label { display: grid; gap: 8px; }
 .personal-backup__onedrive input { min-width: 0; width: 100%; box-sizing: border-box; padding: 10px; color: inherit; background: rgba(0,0,0,.2); border: 1px solid rgba(255,255,255,.2); border-radius: 8px; }
+.personal-backup__onedrive .personal-backup__toggle { display: flex; align-items: center; gap: 10px; }
+.personal-backup__onedrive input[type="checkbox"] { width: auto; flex: 0 0 auto; padding: 0; }
 .personal-backup__login-code { display: inline-block; padding: 5px 9px; letter-spacing: 2px; font-size: 18px; user-select: all; }

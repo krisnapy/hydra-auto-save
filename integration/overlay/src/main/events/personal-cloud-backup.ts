@@ -27,10 +27,21 @@ registerEvent("personalBackup", async (event, request: unknown) => {
     return oneDriveCommand(async () => {
       let notice: string | undefined;
       switch (input.command) {
+        case "auto-retention": {
+          if (typeof input.enabled !== "boolean") throw new Error("Pengaturan retensi tidak valid.");
+          let enabled = input.enabled;
+          if (enabled) {
+            const confirmation = await dialog.showMessageBox(parent, { type: "warning", title: "Aktifkan retensi cloud otomatis?", message: "Rapikan riwayat OneDrive setelah unggahan baru terverifikasi?", detail: "Batas versi normal mengikuti pengaturan riwayat lokal untuk setiap game pada perangkat ini. Versi lama dan data yang sudah tidak diperlukan dipindahkan ke Recycle Bin OneDrive. Backup pengaman tetap disimpan. Profil perangkat harus unik untuk setiap PC.", buttons: ["Batal", "Aktifkan"], defaultId: 0, cancelId: 0, noLink: true });
+            enabled = confirmation.response === 1;
+          }
+          await cloud.setAutoRetention(enabled);
+          notice = enabled ? "Retensi cloud otomatis aktif." : "Retensi cloud otomatis nonaktif.";
+          break;
+        }
         case "optimize": {
           const plan = await cloud.planOptimization(gameId);
-          if (!plan.remove) { notice = "Tidak ada versi cloud lama yang dapat dibersihkan. Backup pengaman dan paket yang belum dapat diverifikasi tetap dipertahankan."; break; }
-          const confirmation = await dialog.showMessageBox(parent, { type: "warning", title: "Optimalkan backup cloud?", message: `Pindahkan ${plan.remove} paket versi lama ke Recycle Bin OneDrive?`, detail: `Ukuran paket: ${(plan.removableBytes / 1024 ** 2).toFixed(2)} MiB. Pertahankan ${plan.retention} versi normal terbaru per game pada perangkat ini serta semua backup pengaman. ${plan.protectedCount} paket dilindungi atau belum dapat diverifikasi. Backup PC lain dan file di luar folder aplikasi tidak disentuh. Pemeriksaan paket memerlukan unduhan. Kuota tersedia mengikuti pembaruan OneDrive.`, buttons: ["Batal", "Optimalkan cloud"], defaultId: 0, cancelId: 0, noLink: true });
+          if (!plan.remove && !plan.unusedObjects) { notice = "Tidak ada versi cloud lama yang dapat dibersihkan. Backup pengaman dan paket yang belum dapat diverifikasi tetap dipertahankan."; break; }
+          const confirmation = await dialog.showMessageBox(parent, { type: "warning", title: "Optimalkan backup cloud?", message: `Pindahkan ${plan.remove} versi lama dan ${plan.unusedObjects ?? 0} file yang tidak diperlukan ke Recycle Bin OneDrive?`, detail: `Ukuran data: ${(plan.removableBytes / 1024 ** 2).toFixed(2)} MiB. Pertahankan ${plan.retention} versi normal terbaru per game pada perangkat ini serta semua backup pengaman. ${plan.protectedCount} paket dilindungi atau belum dapat diverifikasi. Pemeriksaan memerlukan unduhan. Kuota tersedia mengikuti pembaruan OneDrive.`, buttons: ["Batal", "Optimalkan cloud"], defaultId: 0, cancelId: 0, noLink: true });
           notice = confirmation.response === 1 ? (await cloud.optimize(plan.token, gameId)).detail : "Optimisasi cloud dibatalkan.";
           break;
         }

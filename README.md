@@ -1,8 +1,10 @@
-# Hydra Personal Cloud Backup — 0.3.2
+# Hydra Personal Cloud Backup — 0.3.3
 
 Implementasi awal modul backup untuk salinan kode **Hydra Launcher 4.3.0 di Windows**. Tersedia installer dan aplikasi portable Windows x64 dengan runtime serta Ludusavi bawaan. Build, pemeriksaan tipe seluruh Hydra, dan uji membuka aplikasi/pengaturan backup di Windows telah berhasil. Pengujian game nyata dan penyedia cloud masih diperlukan.
 
 Draft awal tetap tersedia di [docs/rancangan-auto-backup.md](docs/rancangan-auto-backup.md). Keputusan implementasi awal dan batas verifikasi tercatat di [docs/implementasi.md](docs/implementasi.md). Tahapan berikutnya ada di [roadmap Personal Cloud](docs/roadmap-personal-cloud.md).
+
+Pengembangan 0.3.3: deduplikasi file antarversi OneDrive, antrean biner, retensi cloud otomatis opsional, perbaikan URL unduhan, dan [efisiensi background](docs/efisiensi-background.md). Indeks `.hpb` baru harus disimpan bersama data `.hpd` dan memerlukan pembaca 0.3.3+. Paket penuh lama tetap dapat dibaca. Installer 0.3.3 sedang disiapkan; tautan di bawah masih rilis sebelumnya.
 
 Perubahan 0.3.2: [optimisasi alur dan ukuran backup](docs/optimisasi-penyimpanan.md), meliputi kompresi adaptif, penggunaan ulang isi backup terverifikasi dan pencegahan pengemasan unggahan duplikat. Tombol **Optimalkan backup lokal** dan **Optimalkan backup cloud** memeriksa riwayat dan meminta konfirmasi sebelum memproses versi lama. Backup terkompresi baru memerlukan pembaca lokal baru; backup lama dan transport `.hpb` tetap didukung.
 
@@ -97,7 +99,7 @@ Pengujian tampilan halaman game tersedia dalam [galeri dan laporan visual](docs/
 - Symlink/junction dan folder yang saling bertumpuk ditolak. File Registry, save terlindungi/terenkripsi, dan file cloud yang belum tersedia secara lokal dapat memerlukan penanganan lain.
 - Pemantauan file otomatis disegarkan setiap 60 detik. Penambahan slot save dapat terlambat ditemukan hingga pemindaian berikutnya. Jika semua lokasi save hilang, backup normal ditolak untuk menjaga riwayat lama.
 - Mengubah lokasi save manual dapat membuat versi dari lokasi lama tidak dapat dipulihkan sampai pengaturan yang cocok dipilih kembali.
-- Backup lokal belum dibatasi kuota total dan riwayat pengaman dapat terus memakai ruang disk. Paket OneDrive memakai gzip, batas 32 MiB save per versi, serta batas antrean 512 MiB/1.000 pekerjaan. Riwayat cloud belum dipangkas otomatis.
+- Backup lokal belum dibatasi kuota total dan riwayat pengaman dapat terus memakai ruang disk. Paket OneDrive memakai gzip, batas 32 MiB save per versi, serta batas antrean 512 MiB/1.000 pekerjaan. Retensi cloud otomatis tersedia sebagai pilihan dengan konfirmasi; backup pengaman tetap dipertahankan.
 - Jika pemulihan terputus dan catatan pemulihan masih ada, pemulihan berikutnya diblokir. Pertahankan catatan, backup pengaman, serta folder `.hydra-previous-…` untuk pemeriksaan; jangan menghapusnya tanpa memastikan progres yang akan dipertahankan.
 
 ## Pemeriksaan integrasi tambahan

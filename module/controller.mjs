@@ -282,6 +282,7 @@ export class BackupController {
     this.active = true;
     try {
       const games = await this.getGames();
+      this.hasRunningGames = games.some(game => game.running);
       const known = new Set(games.map(game => game.id));
       for (const id of this.dirty.keys()) if (!known.has(id)) this.dirty.delete(id);
       for (const id of this.lastScan.keys()) if (!known.has(id)) this.lastScan.delete(id);
@@ -334,16 +335,21 @@ export class BackupController {
     if (this.timer) return;
     this.stopping = false;
     const run = () => {
-      if (this.inFlight) return;
-      this.inFlight = this.tick().catch(this.onError).finally(() => { this.inFlight = null; });
+      this.inFlight = this.tick().catch(this.onError).finally(() => {
+        this.inFlight = null;
+        if (!this.stopping && this.timer) {
+          const delay = this.isBackground() && !this.hasRunningGames ? this.idlePollMs : this.pollMs;
+          this.timer = setTimeout(run, delay);
+          this.timer.unref?.();
+        }
+      });
     };
-    this.timer = setInterval(run, this.pollMs);
+    this.timer = setTimeout(run, 0);
     this.timer.unref?.();
-    run();
   }
   async stop() {
     this.stopping = true;
-    clearInterval(this.timer);
+    clearTimeout(this.timer);
     clearTimeout(this.wakeTimer);
     this.monitor.close();
     this.timer = undefined;

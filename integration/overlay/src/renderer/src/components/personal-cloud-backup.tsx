@@ -79,7 +79,7 @@ export function BackupProgressPanel({ gameId, busy, compact = false, onCompleted
             <span style={determinate ? { transform: `scaleX(${percent! / 100})` } : undefined} />
           </div>
           {!determinate && typeof operation.completed === "number" && <p>{operation.completed} file telah diperiksa pada tahap ini</p>}
-          {determinate && <p>{operation.completed ?? 0} dari {operation.total} {operation.phase === "restore-replacing" ? "lokasi" : operation.phase === "optimization-inspecting" ? "item" : operation.phase.startsWith("optimization-") ? "versi" : "file"} pada tahap ini</p>}
+          {determinate && <p>{operation.completed ?? 0} dari {operation.total} {operation.phase === "restore-replacing" ? "lokasi" : (operation.phase === "optimization-inspecting" || operation.kind === "cloud-optimize") ? "item" : operation.phase.startsWith("optimization-") ? "versi" : "file"} pada tahap ini</p>}
           {!compact && <small>Mulai {new Date(operation.startedAt).toLocaleTimeString()}</small>}
         </div>;
       })}
@@ -202,22 +202,23 @@ export function PersonalCloudBackup({ gameId }: { gameId?: string }) {
     mounted.current = true;
     setSnapshot(undefined);
     setError("");
-    let historyPending = true;
-    void refresh().finally(() => { historyPending = false; });
-    const timer = setInterval(() => {
-      if (historyPending || document.hidden) return;
+    let disposed = false, historyPending = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const poll = () => {
+      if (disposed || historyPending || document.hidden) return;
       historyPending = true;
-      void refresh().finally(() => { historyPending = false; });
-    }, 10000);
+      void refresh().finally(() => {
+        historyPending = false;
+        if (!disposed && !document.hidden) timer = setTimeout(poll, 10000);
+      });
+    };
+    poll();
     const onVisible = () => {
-      if (document.hidden) return;
-      if (!historyPending) {
-        historyPending = true;
-        void refresh().finally(() => { historyPending = false; });
-      }
+      clearTimeout(timer);
+      if (!document.hidden) poll();
     };
     document.addEventListener("visibilitychange", onVisible);
-    return () => { mounted.current = false; requestNumber.current++; clearInterval(timer); document.removeEventListener("visibilitychange", onVisible); };
+    return () => { disposed = true; mounted.current = false; requestNumber.current++; clearTimeout(timer); document.removeEventListener("visibilitychange", onVisible); };
   }, [refresh]);
   const action = async (name: string, values: Record<string, unknown> = {}) => {
     setBusy(true); setError(""); setMessage("");

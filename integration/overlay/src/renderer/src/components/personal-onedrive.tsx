@@ -12,8 +12,14 @@ export function PersonalOneDrive({ gameId, onDownloaded }: { gameId?: string; on
   const sequence = useRef(0);
   useEffect(() => {
     mounted.current = true; let disposed = false; let previous = "";
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const schedule = () => {
+      clearTimeout(timer);
+      if (!disposed && !document.hidden) timer = setTimeout(() => void poll(), 5000);
+    };
     const poll = async () => {
-      if (document.hidden || pending.current || actionRunning.current || disposed) return;
+      if (document.hidden || disposed) return;
+      if (pending.current || actionRunning.current) { schedule(); return; }
       pending.current = true;
       const current = ++sequence.current;
       try {
@@ -22,11 +28,12 @@ export function PersonalOneDrive({ gameId, onDownloaded }: { gameId?: string; on
           previous = JSON.stringify(result); setCloud(result);
         }
       } catch (failure) { if (!disposed) setError(String(failure)); }
-      finally { pending.current = false; }
+      finally { pending.current = false; schedule(); }
     };
-    void poll(); const timer = setInterval(() => void poll(), 5000);
-    document.addEventListener("visibilitychange", poll);
-    return () => { disposed = true; mounted.current = false; clearInterval(timer); document.removeEventListener("visibilitychange", poll); };
+    const onVisible = () => { clearTimeout(timer); if (!document.hidden) void poll(); };
+    void poll();
+    document.addEventListener("visibilitychange", onVisible);
+    return () => { disposed = true; mounted.current = false; clearTimeout(timer); document.removeEventListener("visibilitychange", onVisible); };
   }, [gameId]);
   const command = async (name: string, values: Record<string, unknown> = {}) => {
     actionRunning.current = true; sequence.current++;
@@ -59,9 +66,10 @@ export function PersonalOneDrive({ gameId, onDownloaded }: { gameId?: string; on
       {cloud.lastUploadedAt && <p>Unggahan terverifikasi terakhir: {new Date(cloud.lastUploadedAt).toLocaleString()}</p>}
       <div className="personal-backup__actions"><button disabled={busy} onClick={() => void command("sync")}>Unggah backup terbaru / coba lagi</button>{gameId && <button disabled={busy} onClick={() => void command("list")}>Lihat versi OneDrive</button>}</div>
       <button disabled={busy || cloud.uploading} onClick={() => void command("optimize")}>Optimalkan backup cloud</button>
-      <p className="personal-backup__muted">Periksa paket lalu pilih apakah versi lama dipindahkan ke Recycle Bin OneDrive sesuai batas riwayat lokal. Backup pengaman dan PC lain dipertahankan. Pemeriksaan memerlukan unduhan paket.</p>
-      {cloud.versions.length > 0 && <ul className="personal-backup__versions">{cloud.versions.map(version => <li key={version.name}><div><strong>{new Date(version.modifiedAt).toLocaleString()}</strong><p>{(version.size / 1024 ** 2).toFixed(2)} MiB · perangkat ini</p></div><button disabled={busy} onClick={() => void command("download", { name: version.name })}>Unduh ke riwayat</button></li>)}</ul>}
-      <p className="personal-backup__muted">Versi 0.3: maksimal 32 MiB save per versi, perangkat ini saja. Unduhan masuk riwayat lokal; pemulihan tetap perlu dipilih dan dikonfirmasi. Pembersihan cloud hanya berjalan setelah konfirmasi optimisasi.</p>
+      <label className="personal-backup__toggle"><input type="checkbox" checked={cloud.autoRetention === true} disabled={busy} onChange={event => void command("auto-retention", { enabled: event.target.checked })} /> Rapikan riwayat cloud otomatis</label>
+      <p className="personal-backup__muted">Setelah unggahan terverifikasi, simpan {cloud.retention ?? 10} versi normal terbaru per game sesuai batas riwayat lokal. Backup pengaman tetap disimpan. Data bersama dibersihkan setelah seluruh versi yang memakainya sudah dihapus. Pemeriksaan memerlukan unduhan.</p>
+      {cloud.versions.length > 0 && <ul className="personal-backup__versions">{cloud.versions.map(version => <li key={version.name}><div><strong>{new Date(version.modifiedAt).toLocaleString()}</strong><p>{(version.size / 1024 ** 2).toFixed(2)} MiB file versi · perangkat ini</p></div><button disabled={busy} onClick={() => void command("download", { name: version.name })}>Unduh ke riwayat</button></li>)}</ul>}
+      <p className="personal-backup__muted">Maksimal 32 MiB save per versi, perangkat ini saja. Versi baru berbagi file yang identik untuk menghemat ruang dan unggahan. Unduhan masuk riwayat lokal untuk dipulihkan. File versi kecil di OneDrive perlu disimpan bersama data penyusunnya.</p>
     </>}
     {(cloud.connected || cloud.login) && <button disabled={busy} onClick={() => void command("disconnect")}>{cloud.login ? "Batalkan login" : "Putuskan koneksi"}</button>}
     {busy && <p role="status">Memproses permintaan OneDrive…</p>}

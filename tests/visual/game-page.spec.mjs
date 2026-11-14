@@ -178,6 +178,29 @@ test('pengaturan menampilkan tombol optimisasi lokal dan cloud tanpa overflow', 
   await expect(panel(page).getByRole('button', { name: 'Optimalkan backup cloud', exact: true })).toBeVisible({ timeout: 8000 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   expect(await panel(page).locator('button').evaluateAll(buttons => buttons.some(button => button.scrollWidth > button.clientWidth + 2))).toBe(false);
+  const toggle = panel(page).getByRole('checkbox', { name: 'Rapikan riwayat cloud otomatis' });
+  const aligned = await toggle.evaluate(input => {
+    const label = input.closest('label').getBoundingClientRect();
+    const box = input.getBoundingClientRect();
+    return box.width < 30 && box.left - label.left < 8;
+  });
+  expect(aligned).toBe(true);
   await fs.mkdir(screenshots, { recursive: true });
   await page.screenshot({ path: path.join(screenshots, `${info.project.name}-optimization-settings.png`), fullPage: true, animations: 'disabled' });
+});
+
+test('retensi cloud otomatis mengikuti konfirmasi dan dapat dimatikan', async ({ page }) => {
+  await visit(page, 'complete');
+  await page.evaluate(() => window.visualFixture.connectCloud());
+  const checkbox = panel(page).getByRole('checkbox', { name: 'Rapikan riwayat cloud otomatis' });
+  await expect(checkbox).toBeVisible({ timeout: 8000 });
+  await expect(checkbox).not.toBeChecked();
+  page.once('dialog', dialog => dialog.dismiss());
+  await checkbox.click();
+  await expect(checkbox).not.toBeChecked();
+  page.once('dialog', dialog => dialog.accept());
+  await checkbox.click();
+  await expect(checkbox).toBeChecked();
+  await checkbox.click();
+  await expect(checkbox).not.toBeChecked();
 });

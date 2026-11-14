@@ -4,6 +4,7 @@ export interface CloudSnapshot {
   provider: 'onedrive'; clientId: string; connected: boolean;
   login: { userCode: string; expiresAt: number; url: string } | null;
   pending: number; uploaded: number; uploading: boolean; error: string; lastUploadedAt?: string;
+  autoRetention: boolean; retention: number;
   versions: Array<{ name: string; modifiedAt: string; size: number }>;
 }
 export class CloudSync {
@@ -14,9 +15,10 @@ export class CloudSync {
   disconnect(): Promise<void>;
   backupCompleted(engine: unknown, gameId: string, manifest: unknown): Promise<void>;
   sync(gameId?: string): Promise<void>;
+  setAutoRetention(enabled: boolean): Promise<void>;
   list(gameId: string): Promise<void>;
   download(gameId: string, name: string): Promise<void>;
-  planOptimization(gameId?: string): Promise<{ token: string; retention: number; remove: number; removableBytes: number; protectedCount: number }>;
+  planOptimization(gameId?: string): Promise<{ token: string; retention: number; remove: number; unusedObjects: number; removableBytes: number; protectedCount: number }>;
   optimize(token: string, gameId?: string): Promise<{ detail: string }>;
   stop(): Promise<void>;
 }

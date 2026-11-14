@@ -13,6 +13,7 @@ async function harness({ confirm = false, empty = false, fail = false } = {}) {
     snapshot: async () => ({ versions: [] }),
   };
   const cloud = {
+    setAutoRetention: async enabled => { calls.push(['auto-retention', enabled]); },
     planOptimization: async id => { calls.push(['cloud-plan', id]); return { token: 'cloud-server-token', retention: 10, remove: empty ? 0 : 3, removableBytes: 4096, protectedCount: 1 }; },
     optimize: async (...args) => { calls.push(['cloud-optimize', ...args]); if (fail) throw new Error('stale plan'); return { detail: 'cloud complete' }; },
     snapshot: () => ({ provider: 'onedrive', connected: true }),
@@ -30,6 +31,17 @@ async function harness({ confirm = false, empty = false, fail = false } = {}) {
   vm.runInNewContext(ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText, { exports: {}, require: name => { assert.ok(modules[name], name); return modules[name]; } });
   return { calls, dialogs, invoke: request => handler({ trusted: true }, request), handler };
 }
+
+test('automatic cloud retention is disabled unless confirmed, and renderer values must be boolean', async () => {
+  const cancelled = await harness();
+  await cancelled.invoke({ action: 'cloud', command: 'auto-retention', enabled: true });
+  assert.deepEqual(cancelled.calls, [['auto-retention', false]]);
+  assert.equal(cancelled.dialogs[0].defaultId, 0);
+  const confirmed = await harness({ confirm: true });
+  await confirmed.invoke({ action: 'cloud', command: 'auto-retention', enabled: true });
+  assert.deepEqual(confirmed.calls, [['auto-retention', true]]);
+  await assert.rejects(confirmed.invoke({ action: 'cloud', command: 'auto-retention', enabled: 'yes' }), /tidak valid/);
+});
 
 for (const scope of ['local', 'cloud']) {
   const request = scope === 'local' ? { action: 'optimize' } : { action: 'cloud', command: 'optimize' };

@@ -1,5 +1,17 @@
 # Optimisasi backup lokal dan cloud — 0.3.2
 
+## Pengembangan berikutnya — belum dirilis
+
+Perubahan di workspace menambahkan penyimpanan OneDrive berbagi data antarversi, dalam cakupan game dan perangkat yang sama. File save identik diunggah sekali sebagai `.hpd`; setiap versi `.hpb` baru berisi indeks kecil yang merujuk data tersebut. Ini deduplikasi per file, belum per bagian file: perubahan kecil dalam satu file besar tetap memerlukan unggahan file itu kembali. Data dicoba dengan kompresi adaptif, sedangkan antrean lokal memakai kemasan biner tanpa Base64. Verifikasi data cloud masih mengunduh isinya, sehingga penghematan unggahan tidak berarti seluruh lalu lintas jaringan hilang.
+
+Pembaca baru tetap mendukung paket `.hpb` penuh yang lama. Pembaca 0.3.2 tidak dapat memulihkan format berbagi yang baru. Simpan indeks `.hpb` dan data `.hpd` bersama; indeks baru bukan ekspor mandiri. Ekspor eksplisit melalui API `packVersion` tanpa opsi `shared` tetap menghasilkan paket lama yang mandiri. Impor baru dapat memakai kompresi adaptif di riwayat lokal. Data cloud lama tidak dikonversi otomatis.
+
+Pilihan **Rapikan riwayat cloud otomatis** memerlukan konfirmasi dan berlaku untuk akun OneDrive tempat pilihan diaktifkan. Setelah unggahan baru selesai diverifikasi, retensi mengikuti batas riwayat lokal; backup pengaman dipertahankan. Jika retensi gagal, alasan ditampilkan; pemeriksaan berikutnya dilakukan setelah unggahan baru berhasil atau melalui optimisasi manual. Data bersama dihapus hanya bila seluruh versi pemakainya telah dipindahkan ke Recycle Bin. Paket rusak atau antrean tertunda menghalangi pembersihan data bersama. Data tanpa rujukan harus berumur lebih dari tujuh hari dan lolos verifikasi sebelum dapat dibersihkan. Profil perangkat harus unik pada setiap PC.
+
+Pengujian sintetis dua versi dengan satu file acak 1 MiB yang tetap dan slot kecil yang berubah menghasilkan 2.107.264 byte paket lama dibanding 1.050.852 byte penyimpanan bersama; versi kedua menambah 1.138 byte. Hasil ini khusus fixture tersebut. Save yang seluruh isinya berubah akan mendapat penghematan lebih kecil. Perubahan ini belum menjadi installer dan belum diuji dengan OneDrive nyata atau Windows.
+
+Bagian di bawah menjelaskan perilaku rilis 0.3.2 sebelum perubahan tersebut.
+
 Fitur 0.3.2. Gunakan installer 0.3.2 atau lebih baru; installer 0.3.1 belum memuat fitur ini.
 
 ## Perilaku
