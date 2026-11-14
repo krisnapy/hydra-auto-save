@@ -1,4 +1,5 @@
 import { BUNDLE_LIMIT } from './cloud-bundle.mjs';
+import { digest } from './engine.mjs';
 // Public application identifier; never embed a client secret in desktop builds.
 export const DEFAULT_CLIENT_ID = process.env.HYDRA_ONEDRIVE_CLIENT_ID || ''; 
 const AUTH = 'https://login.microsoftonline.com/consumers/oauth2/v2.0/';
@@ -8,9 +9,89 @@ export const validClientId = id => typeof id === 'string' && /^[a-f0-9]{8}-(?:[a
 export const cloudName = name => typeof name === 'string' && /^[a-f0-9]{64}_[a-f0-9-]{36}_[a-zA-Z0-9-]{1,100}_[a-f0-9]{64}\.hpb$/.test(name);
 export const objectName = name => typeof name === 'string' && /^[a-f0-9]{64}_[a-f0-9-]{36}_blob_[a-f0-9]{64}\.hpd$/.test(name);
 const storageName = name => cloudName(name) || objectName(name);
+const ROOT = 'me/drive/special/approot';
+const scopePrefix = name => name.slice(0, 102);
+const folderLabel = (value, fallback) => {
+  // OneDrive/Windows reserved names, trailing punctuation and UTF-16 length.
+  const text = String(value || fallback).normalize('NFC').replace(/[\x00-\x1f\x7f"*:<>?\\/|#%]/g, ' ').replace(/\s+/g, ' ').trim().replace(/^[. ]+|[. ]+$/g, '');
+  return ([...text].slice(0, 70).join('') || fallback).replace(/[. ]+$/g, '');
+};
+const itemBase = item => {
+  if (typeof item?.id !== 'string' || !item.id || item.id.length > 512) throw new Error('Identitas folder OneDrive tidak valid.');
+  return `me/drive/items/${encodeURIComponent(item.id)}`;
+};
 
 export class OneDrive {
-  constructor({ clientId, loadTokens, saveTokens, fetcher = fetch }) { Object.assign(this, { clientId, loadTokens, saveTokens, fetcher }); }
+  constructor({ clientId, loadTokens, saveTokens, fetcher = fetch, resolveScope }) {
+    Object.assign(this, { clientId, loadTokens, saveTokens, fetcher, resolveScope });
+    this.resetFolders();
+  }
+  resetFolders() { this.folders = new Map(); this.locations = new Map(); }
+  scope(prefix) {
+    const value = this.resolveScope?.(prefix);
+    if (!value) return null;
+    if (typeof value.gameId !== 'string' || !/^[a-f0-9-]{36}$/.test(value.deviceId) || `${digest(value.gameId)}_${value.deviceId}_` !== prefix) throw new Error('Identitas folder game tidak valid.');
+    return { ...value, gameSuffix: ` [${digest(value.gameId).slice(0, 12)}]`, deviceSuffix: ` [${value.deviceId}]` };
+  }
+  async children(base) {
+    const collection = `${base}/children`;
+    let relative = `${collection}?$select=id,name,size,eTag,lastModifiedDateTime,folder&$top=200`;
+    const result = [];
+    for (let page = 0; relative && page < 100; page++) {
+      const data = await (await this.graph(relative)).json();
+      if (!Array.isArray(data.value)) throw new Error('Daftar OneDrive tidak valid.');
+      result.push(...data.value);
+      const next = data['@odata.nextLink'];
+      if (next && (typeof next !== 'string' || !next.startsWith(GRAPH + collection + '?'))) throw new Error('Alamat lanjutan OneDrive tidak valid.');
+      relative = next ? next.slice(GRAPH.length) : '';
+    }
+    if (relative) throw new Error('Terlalu banyak versi cloud. Periksa folder aplikasi OneDrive.');
+    return result;
+  }
+  async childFolder(base, suffix, label, create, entries) {
+    const find = items => {
+      const matches = items.filter(item => typeof item.name === 'string' && item.name.endsWith(suffix));
+      if (matches.length > 1 || matches.some(item => !item.folder)) throw new Error('Folder game OneDrive bertentangan atau ganda. Periksa folder aplikasi.');
+      if (matches[0]) itemBase(matches[0]);
+      return matches[0];
+    };
+    const found = find(entries ?? await this.children(base));
+    if (found || !create) return found;
+    const name = folderLabel(label, 'Backup') + suffix;
+    let item;
+    try {
+      item = await (await this.graph(`${base}/children`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, folder: {}, '@microsoft.graph.conflictBehavior': 'fail' }) })).json();
+    } catch (error) {
+      if (error.status !== 409) throw error;
+      item = find(await this.children(base));
+      if (!item) throw error;
+    }
+    if (!item?.folder || typeof item.name !== 'string' || !item.name.endsWith(suffix)) throw new Error('Folder OneDrive belum dapat diverifikasi.');
+    itemBase(item);
+    return item;
+  }
+  async directory(prefix, create = false, rootEntries) {
+    const scope = this.scope(prefix);
+    if (!scope) return null;
+    if (this.folders.has(prefix)) return this.folders.get(prefix);
+    const game = await this.childFolder(ROOT, scope.gameSuffix, scope.gameTitle || scope.gameId, create, rootEntries);
+    if (!game) return null;
+    const device = await this.childFolder(itemBase(game), scope.deviceSuffix, scope.deviceName || 'PC', create);
+    if (!device) return null;
+    const base = itemBase(device);
+    this.folders.set(prefix, base);
+    return base;
+  }
+  async metadata(name) {
+    const folder = await this.directory(scopePrefix(name));
+    if (folder) {
+      const item = `${folder}:/${name}`;
+      try { return { item, metadata: await (await this.graph(`${item}?$select=name,size,@microsoft.graph.downloadUrl`)).json() }; }
+      catch (error) { if (error.status !== 404) throw error; }
+    }
+    const item = `${ROOT}:/${name}`;
+    return { item, metadata: await (await this.graph(`${item}?$select=name,size,@microsoft.graph.downloadUrl`)).json() };
+  }
   async request(url, { redirect = 'error', ...options } = {}) {
     try { return await this.fetcher(url, { ...options, signal: AbortSignal.timeout(60000), redirect }); }
     catch { throw new Error('OneDrive belum dapat dihubungi. Periksa koneksi; antrean lokal dipertahankan.'); }
@@ -66,37 +147,57 @@ export class OneDrive {
     const root = await (await this.graph('me/drive/special/approot')).json();
     const driveId = root.parentReference?.driveId;
     if (typeof driveId !== 'string' || !driveId) throw new Error('Identitas OneDrive belum dapat diverifikasi.');
+    if (this.driveId !== driveId) { this.resetFolders(); this.driveId = driveId; }
     return driveId;
   }
   async upload(name, bytes) {
     if (!storageName(name) || bytes.length > BUNDLE_LIMIT) throw new Error('Paket unggahan tidak valid.');
-    const item = await (await this.graph(`me/drive/special/approot:/${name}:/content`, { method: 'PUT', headers: { 'Content-Type': 'application/octet-stream' }, body: bytes })).json();
+    let base = ROOT;
+    if (this.scope(scopePrefix(name))) {
+      // Do not create a duplicate when retrying an index already in the flat layout.
+      let legacy = false;
+      if (cloudName(name)) {
+        try { await this.graph(`${ROOT}:/${name}?$select=name`); legacy = true; }
+        catch (error) { if (error.status !== 404) throw error; }
+      }
+      if (!legacy) base = await this.directory(scopePrefix(name), true);
+    }
+    const item = await (await this.graph(`${base}:/${name}:/content`, { method: 'PUT', headers: { 'Content-Type': 'application/octet-stream' }, body: bytes })).json();
     if (item.name !== name || item.size !== bytes.length || !item.id) throw new Error('Hasil unggahan OneDrive belum dapat diverifikasi.');
     return item.id;
   }
   async list(prefix, { objects = false } = {}) {
-    let relative = 'me/drive/special/approot/children?$select=id,name,size,eTag,lastModifiedDateTime&$top=200';
-    const result = [];
-    for (let page = 0; relative && page < 100; page++) {
-      const data = await (await this.graph(relative)).json();
-      if (!Array.isArray(data.value)) throw new Error('Daftar OneDrive tidak valid.');
-      result.push(...data.value.filter(item => (objects ? storageName(item.name) : cloudName(item.name)) && item.name.startsWith(prefix) && Number.isSafeInteger(item.size) && item.size >= 0 && item.size <= BUNDLE_LIMIT));
-      const next = data['@odata.nextLink'];
-      if (next && (!next.startsWith(GRAPH + 'me/drive/special/approot/children?'))) throw new Error('Alamat lanjutan OneDrive tidak valid.');
-      relative = next ? next.slice(GRAPH.length) : '';
+    const rootEntries = await this.children(ROOT);
+    const folder = await this.directory(prefix, false, rootEntries);
+    const groups = [{ base: ROOT, entries: rootEntries }];
+    if (folder) groups.push({ base: folder, entries: await this.children(folder) });
+    const result = [], seen = new Set();
+    for (const { base, entries } of groups) for (const item of entries) {
+      if (!(objects ? storageName(item.name) : cloudName(item.name)) || !item.name.startsWith(prefix)) continue;
+      if (seen.has(item.name)) throw new Error('File backup ganda ditemukan pada folder lama dan folder game. Pembersihan dihentikan.');
+      seen.add(item.name);
+      // Keep malformed scoped entries visible to the retention verifier, so
+      // an unreadable index cannot hide references to shared save data.
+      result.push(item);
+      if (this.locations.size > 40000) this.locations.clear();
+      this.locations.set(item.name, { item: `${base}:/${item.name}`, eTag: item.eTag });
     }
-    if (relative) throw new Error('Terlalu banyak versi cloud. Periksa folder aplikasi OneDrive.');
     return result;
   }
   async remove(name, eTag) {
     if (!storageName(name) || typeof eTag !== 'string' || !eTag || eTag.length > 1000 || /[\r\n]/.test(eTag)) throw new Error('Identitas versi cloud belum dapat dipastikan. Muat ulang pemeriksaan optimisasi.');
-    const response = await this.graph(`me/drive/special/approot:/${name}`, { method: 'DELETE', headers: { 'If-Match': eTag } });
+    let item = `${ROOT}:/${name}`;
+    if (this.scope(scopePrefix(name))) {
+      const location = this.locations.get(name);
+      if (!location || location.eTag !== eTag) throw new Error('Muat ulang pemeriksaan optimisasi sebelum menghapus versi.');
+      item = location.item;
+    }
+    const response = await this.graph(item, { method: 'DELETE', headers: { 'If-Match': eTag } });
     if (response.status !== 204) throw new Error('Hasil pembersihan OneDrive belum dapat dipastikan. Periksa ulang daftar versi.');
   }
   async download(name) {
     if (!storageName(name)) throw new Error('Nama versi cloud tidak valid.');
-    const item = `me/drive/special/approot:/${name}`;
-    const metadata = await (await this.graph(`${item}?$select=name,size,@microsoft.graph.downloadUrl`)).json();
+    const { item, metadata } = await this.metadata(name);
     if (metadata.name !== name || !Number.isSafeInteger(metadata.size) || metadata.size < 0 || metadata.size > BUNDLE_LIMIT) throw new Error('Ukuran paket cloud tidak valid.');
     let address = metadata['@microsoft.graph.downloadUrl'];
     if (address == null || address === '') {

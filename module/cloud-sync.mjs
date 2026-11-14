@@ -1,5 +1,6 @@
 import * as fs from 'node:fs/promises';
 import path from 'node:path';
+import { hostname } from 'node:os';
 import { OneDrive, validClientId, cloudName, objectName, DEFAULT_CLIENT_ID } from './onedrive.mjs';
 import { packVersion, importVersion, validateBundle, validateValue, splitSharedBundle, readSharedIndex, materializeShared, sharedObjectName } from './cloud-bundle.mjs';
 import { atomicJson, digest, safePath } from './engine.mjs';
@@ -21,7 +22,11 @@ export class CloudSync {
     catch (error) { if (error.code !== 'ENOENT') throw new Error('Pengaturan OneDrive rusak; data dipertahankan.'); this.state = { clientId: '', driveId: '', jobs: [] }; }
     if (!Array.isArray(this.state.jobs) || this.state.jobs.length > 1200 || this.state.jobs.some(job => !cloudName(job.name) || (job.outboxHash !== undefined && !/^[a-f0-9]{64}$/.test(job.outboxHash)) || typeof job.driveId !== 'string' || !job.driveId || typeof job.gameId !== 'string' || !Number.isSafeInteger(job.bytes) || job.bytes < 0 || !Number.isFinite(job.nextAt) || !Number.isSafeInteger(job.attempts) || job.attempts < 0)) throw new Error('Antrean cloud tidak valid.');
     this.state.clientId ||= DEFAULT_CLIENT_ID;
-    this.provider = new OneDrive({ clientId: this.state.clientId, loadTokens: () => this.vault.load(), saveTokens: value => this.vault.save(value), fetcher: this.fetcher });
+    this.provider = new OneDrive({ clientId: this.state.clientId, loadTokens: () => this.vault.load(), saveTokens: value => this.vault.save(value), fetcher: this.fetcher, resolveScope: prefix => {
+      const deviceId = this.controller.state.deviceId;
+      const entry = Object.entries(this.controller.state.games).find(([id]) => `${digest(id)}_${deviceId}_` === prefix);
+      return entry ? { gameId: entry[0], gameTitle: entry[1].title || entry[0], deviceId, deviceName: hostname() } : null;
+    } });
     this.connected = Boolean(await this.vault.load());
     // A crash between publishing an outbox file and saving its job can leave an
     // unreferenced file. Keep a day's grace before removing owned leftovers.
@@ -84,7 +89,7 @@ export class CloudSync {
     // Drain existing network work before removing credentials. No late refresh can resurrect them.
     this.stopped = true; clearTimeout(this.timer); this.timer = undefined; this.timerAt = undefined;
     await this.loginJob?.catch(() => {}); await this.job?.catch(() => {}); await this.maintenanceJob?.catch(() => {});
-    this.login = null; this.connected = false; this.remote.clear();
+    this.login = null; this.connected = false; this.remote.clear(); this.provider.resetFolders?.();
     await this.vault.save(null); this.error = ''; this.stopped = false;
   }
   packageFile(job) { return path.join(this.directory, `${digest(`${job.driveId}:${job.name}`)}.hpb`); }
@@ -118,7 +123,11 @@ export class CloudSync {
   async backupCompleted(engine, gameId, manifest) {
     if (!manifest) return;
     try { await this.enqueue(engine, gameId, manifest.id); }
-    catch (error) { this.error = error.message; }
+    catch (error) { this.error = this.gameError(gameId, error); }
+  }
+  gameError(gameId, error) {
+    const title = this.controller.state.games[gameId]?.title || gameId;
+    return `OneDrive · ${title} (${gameId}): ${error.message}`;
   }
   tick() {
     if (this.job || this.stopped || this.loginJob || this.maintenanceJob) return this.job ?? Promise.resolve();
@@ -189,7 +198,7 @@ export class CloudSync {
       this.retentionDue = job.gameId;
     } catch (error) {
       job.attempts++; job.nextAt = Date.now() + Math.max(error.retryAfter || 0, Math.min(300000, 5000 * 2 ** Math.min(job.attempts, 6)));
-      await this.save(); throw error;
+      await this.save(); throw Object.assign(new Error(this.gameError(job.gameId, error)), { retryAfter: error.retryAfter, status: error.status });
     } finally { this.uploading = undefined; }
   }
   async sync(gameId) {
@@ -200,7 +209,10 @@ export class CloudSync {
       const games = gameId ? [gameId] : Object.keys(this.controller.state.games);
       for (const id of games) {
         const latest = (await engine.versions(id)).find(v => !v.safety);
-        if (latest) await this.enqueue(engine, id, latest.id);
+        if (latest) {
+          try { await this.enqueue(engine, id, latest.id); }
+          catch (error) { throw new Error(this.gameError(id, error)); }
+        }
       }
     }, 'cloud-queue', gameId);
     this.error = '';

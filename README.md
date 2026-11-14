@@ -1,8 +1,10 @@
-# Hydra Personal Cloud Backup — 0.3.3
+# Hydra Personal Cloud Backup — 0.3.4
 
 Implementasi awal modul backup untuk salinan kode **Hydra Launcher 4.3.0 di Windows**. Tersedia installer dan aplikasi portable Windows x64 dengan runtime serta Ludusavi bawaan. Build, pemeriksaan tipe seluruh Hydra, dan uji membuka aplikasi/pengaturan backup di Windows telah berhasil. Pengujian game nyata dan penyedia cloud masih diperlukan.
 
 Draft awal tetap tersedia di [docs/rancangan-auto-backup.md](docs/rancangan-auto-backup.md). Keputusan implementasi awal dan batas verifikasi tercatat di [docs/implementasi.md](docs/implementasi.md). Tahapan berikutnya ada di [roadmap Personal Cloud](docs/roadmap-personal-cloud.md).
+
+Perubahan 0.3.4: [folder OneDrive per nama game dan perangkat](docs/folder-onedrive.md), kompatibilitas baca lokasi lama, serta pesan kegagalan yang menyebut game dan ukuran save. Installer 0.3.4 sedang disiapkan; tautan unduhan di bawah masih untuk rilis 0.3.3. Batas unggahan tetap 32 MiB dan 10.000 file per versi.
 
 Perubahan 0.3.3: deduplikasi file antarversi OneDrive, antrean biner, retensi cloud otomatis opsional, perbaikan URL unduhan, dan [efisiensi background](docs/efisiensi-background.md). Indeks `.hpb` baru harus disimpan bersama data `.hpd` dan memerlukan pembaca 0.3.3+. Paket penuh lama tetap dapat dibaca. Installer 0.3.3 sudah terbit; rilis lama tetap tersedia.
 

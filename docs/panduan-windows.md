@@ -9,6 +9,10 @@ Paket khusus Hydra 4.3.0 dengan Personal Cloud Backup. Memerlukan Windows 10/11 
 5. Pada halaman game, periksa lokasi save yang ditemukan. Jika muncul **Perlu pengaturan**, pilih lokasi save manual. Coba **Backup sekarang** dan pastikan **Backup lokal selesai**.
 6. Untuk memulihkan, tutup game, pilih versi pada riwayat, lalu pilih **Pulihkan**. Kondisi save saat ini dicadangkan terlebih dahulu.
 
+Pada 0.3.4, backup OneDrive baru dikelompokkan ke folder **nama game [ID singkat] → nama PC [ID perangkat]** di folder aplikasi OneDrive. Backup lama tetap dibaca dari lokasi semula dan tidak dipindahkan otomatis. Jangan menghapus lokasi lama: data di sana mungkin masih dipakai versi baru. Pertahankan `.hpb` dan `.hpd` bersama; folder baru memerlukan aplikasi 0.3.4 atau lebih baru untuk pemulihan. File internal tetap memiliki nama identitas untuk verifikasi.
+
+Pesan batas unggahan menyebut game, ukuran save dan jumlah file. Batas tetap 32 MiB dan 10.000 file per versi sebelum kompresi; melepas akun tidak mengubah batas itu. Bila folder yang terdeteksi terlalu luas, periksa **Buka folder save** dan tentukan lokasi yang benar. Backup lokal tetap tersedia.
+
 Database lokasi save diunduh pada penggunaan pertama; setelah itu deteksi memakai cache. Internet diperlukan untuk unduhan awal. **Backup lokal selesai** belum membuktikan unggahan cloud selesai; periksa panel OneDrive untuk unggahan langsung, atau aplikasi cloud untuk folder sinkronisasi.
 
 Gunakan salinan save contoh untuk percobaan pertama. Dukungan awal Steam dan game custom dengan executable diketahui. Pemulihan lintas PC, Registry, Epic terkelola, dan emulator belum didukung.

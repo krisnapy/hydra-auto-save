@@ -65,7 +65,8 @@ export async function packVersion(engine, gameId, versionId, { shared = false } 
   // Explicit legacy exports remain schema 1. New upload jobs use a binary
   // outbox whose index can reference shared objects on the remote drive.
   const manifest = portableManifest(local);
-  if (manifest.files.length > 10000 || manifest.files.reduce((n, f) => n + f.bytes, 0) > SAVE_LIMIT) throw new Error('Unggahan 0.3 dibatasi 32 MiB dan 10.000 file per versi. Backup lokal tetap tersedia.');
+  const saveBytes = manifest.files.reduce((n, f) => n + f.bytes, 0);
+  if (manifest.files.length > 10000 || saveBytes > SAVE_LIMIT) throw new Error(`Save berukuran ${(saveBytes / 1024 ** 2).toFixed(2)} MiB dengan ${manifest.files.length.toLocaleString('id-ID')} file. Batas unggahan: 32 MiB dan 10.000 file per versi. Periksa apakah lokasi save mencakup folder yang terlalu luas. Backup lokal tetap tersedia.`);
   const blobs = {};
   const objects = [];
   for (const entry of manifest.files) {
