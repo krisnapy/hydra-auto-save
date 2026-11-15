@@ -4,7 +4,7 @@ Implementasi awal modul backup untuk salinan kode **Hydra Launcher 4.3.0 di Wind
 
 Draft awal tetap tersedia di [docs/rancangan-auto-backup.md](docs/rancangan-auto-backup.md). Keputusan implementasi awal dan batas verifikasi tercatat di [docs/implementasi.md](docs/implementasi.md). Tahapan berikutnya ada di [roadmap Personal Cloud](docs/roadmap-personal-cloud.md).
 
-Perubahan 0.3.6: respons gagal OneDrive kini menampilkan tahap operasi dan kode kesalahan Microsoft yang dikenali, tanpa pesan mentah/token/URL privat. Pembacaan metadata dan daftar folder yang ditolak 400 dapat dicoba sekali tanpa parameter proyeksi opsional. Operasi tulis tidak diulang oleh fallback tersebut; antrean tetap dipertahankan. Penyebab error 400 pada akun pengguna belum terkonfirmasi. Installer baru sedang disiapkan; tautan di bawah masih 0.3.5.
+Perubahan 0.3.6: respons gagal OneDrive kini menampilkan tahap operasi dan kode kesalahan Microsoft yang dikenali, tanpa pesan mentah/token/URL privat. Pembacaan metadata dan daftar folder yang ditolak 400 dapat dicoba sekali tanpa parameter proyeksi opsional. Operasi tulis tidak diulang oleh fallback tersebut; antrean tetap dipertahankan. Penyebab error 400 pada akun pengguna belum terkonfirmasi. Installer 0.3.6 sudah terbit; pemeriksaan Windows dan 132 tes modul lulus.
 
 Perubahan 0.3.5: batas isi save OneDrive dinaikkan menjadi **128 MiB per versi** (10.000 file), dengan batas paket/pembacaan 192 MiB. Perbaikan mencakup unggahan dan pemulihan. Installer 0.3.5 sudah terbit; 128 tes modul dan pemeriksaan Windows lulus. Setelah memasang 0.3.5, gunakan **Unggah backup terbaru / coba lagi** untuk mengantrekan ulang versi lokal yang sebelumnya terlalu besar. Backup di atas 32 MiB memerlukan pembaca 0.3.5+ untuk pemulihan.
 
@@ -16,7 +16,7 @@ Perubahan 0.3.2: [optimisasi alur dan ukuran backup](docs/optimisasi-penyimpanan
 
 ## Paket Windows tanpa Node.js
 
-**[Unduh setup 0.3.5](https://github.com/krisnapy/hydra-auto-save/releases/download/v0.3.5/Hydra-Personal-Backup-0.3.5-hydra-4.3.0-windows-x64-setup.exe)** (sekitar 208 MB) · [Portable, panduan dan checksum](https://github.com/krisnapy/hydra-auto-save/releases/tag/v0.3.5). Unduhan tidak memerlukan login GitHub. Rilis lama tetap dipertahankan. Build, checksum, pembukaan aplikasi/tray serta tampilan Windows telah lulus; lihat [laporan pengujian](docs/pengujian-tampilan.md).
+**[Unduh setup 0.3.6](https://github.com/krisnapy/hydra-auto-save/releases/download/v0.3.6/Hydra-Personal-Backup-0.3.6-hydra-4.3.0-windows-x64-setup.exe)** (sekitar 208 MB) · [Portable, panduan dan checksum](https://github.com/krisnapy/hydra-auto-save/releases/tag/v0.3.6). Unduhan tidak memerlukan login GitHub. Rilis lama tetap dipertahankan. Build, checksum, pembukaan aplikasi/tray serta tampilan Windows telah lulus; lihat [laporan pengujian](docs/pengujian-tampilan.md).
 
 0.3.1 memperbaiki alamat login OneDrive dengan mengikuti respons Microsoft, menyusun Personal Cloud menjadi satu kolom, serta menyembunyikan input Client ID. Tombol Hubungkan OneDrive memakai konfigurasi bawaan/tersimpan.
 
@@ -95,7 +95,7 @@ Mematikan Auto Backup menghentikan penjadwalan berikutnya. Operasi yang sudah be
 Pengujian tampilan halaman game tersedia dalam [galeri dan laporan visual](docs/pengujian-tampilan.md): 36 pemeriksaan panel/interaksi pada dua ukuran jendela serta screenshot halaman game di aplikasi Windows telah lulus. Skenario backup/pemulihan visual memakai data contoh; belum menggantikan uji save game nyata.
 
 - Installer dan portable `.exe` berhasil dibuat. Aplikasi portable berhasil dibuka di Windows CI; layanan backup, renderer lokal, pengaturan backup, dan Ludusavi bawaan terverifikasi. Instalasi interaktif di PC pengguna, game nyata, dan sinkronisasi OneDrive/Google Drive/Dropbox/pCloud belum diuji.
-- Sebanyak 128 pengujian modul lulus di Windows dan lokal. Pemeriksaan tipe seluruh Hydra terintegrasi serta build Windows lulus. Ini belum membuktikan konsistensi save semua game.
+- Sebanyak 132 pengujian modul lulus di Windows dan lokal. Pemeriksaan tipe seluruh Hydra terintegrasi serta build Windows lulus. Ini belum membuktikan konsistensi save semua game.
 - Ludusavi 0.29.0 asli telah diuji untuk pencarian Steam ID, judul persis, preview file save contoh, penanganan ID tidak dikenal, dan unduhan database. ID `1245620`, `292030`, dan `3751260` dikenali database; lokasi save nyata pada PC pengguna tetap perlu diuji. Database diunduh pada penggunaan pertama.
 - Lokasi save relatif terhadap folder instalasi bergantung pada root instalasi yang dapat dikenali Ludusavi; lokasi instalasi Hydra belum diteruskan sebagai root pemindaian. Gunakan lokasi manual jika file tersebut belum ditemukan.
 - Backup/riwayat yang ditawarkan untuk pemulihan hanya milik perangkat saat ini. Backup perangkat lain tetap terpisah; pemindahan/pemulihan lintas perangkat belum tersedia.
