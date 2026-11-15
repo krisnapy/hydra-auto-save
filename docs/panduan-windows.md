@@ -89,3 +89,10 @@ Lokasi save berada di kiri; kartu Personal Cloud di kanan menampilkan waktu back
 Menu **⋯** memuat deteksi ulang, pemilihan folder/file save, dan buka folder backup. **Detail lokasi dan aktivitas** menampilkan path lengkap serta catatan terbaru. Jika belum diatur, tombol deteksi/pilih folder langsung terlihat. Kegagalan, ruang penyimpanan, dan pemulihan terputus tetap ditampilkan tanpa membuka detail. Status unggahan cloud tidak diasumsikan dari keberhasilan backup lokal.
 
 Untuk repository privat, installer dan portable diunduh dari artifact workflow **Verify Windows package** dengan akun yang memiliki akses. Publikasi rilis publik dilewati saat repository privat.
+
+
+### Jika OneDrive gagal merespons 400
+
+Mulai 0.3.6 pesan memuat tahap seperti **membaca metadata file**, **membaca isi folder**, **membuat folder**, atau **mengunggah file**, serta kode Microsoft yang dikenali, misalnya `invalidRequest` atau `pathTooLong`. Pesan mentah dari penyedia dan URL privat tidak ditampilkan. Salin pesan diagnostik tersebut untuk pemeriksaan; jangan mengirim token atau file kredensial.
+
+Pembacaan metadata/daftar folder yang ditolak 400 dicoba satu kali tanpa parameter pemilihan properti opsional. Fallback ini hanya untuk pembacaan, tidak mengulang pembuatan folder/unggahan/penghapusan atau mengubah token pagination. Ini tidak menjamin semua respons 400 teratasi; penyebab pada akun pengguna tetap perlu dikonfirmasi. Antrean dan backup lokal dipertahankan. Sesudah pembaruan, tekan **Unggah backup terbaru / coba lagi**; jangan hapus antrean atau backup.

@@ -45,6 +45,9 @@ module.exports = async ({ github, context, core }) => {
     body: [
       'Versi uji awal berbasis Hydra Launcher 4.3.0.', '',
       `## Perubahan ${version}`,
+      '- Respons gagal OneDrive menampilkan tahap operasi dan kode Microsoft yang dikenali, tanpa pesan mentah/token/URL privat.',
+      '- Pembacaan metadata/daftar folder yang ditolak 400 dapat dicoba satu kali tanpa proyeksi opsional. Fallback tidak mengulang operasi tulis atau mengubah token pagination.',
+      '- Penyebab error 400 pada akun pengguna belum terkonfirmasi. Jika berlanjut, salin pesan diagnostik baru; antrean dan backup lokal dipertahankan.',
       '- Unggahan baru OneDrive masuk folder nama game dan nama PC, dengan ID tetap untuk membedakan game/perangkat yang namanya sama.',
       '- Backup lama tetap ditemukan di lokasi semula; tidak dipindahkan atau dihapus otomatis. Data save lama yang masih dipakai versi baru tetap dipertahankan.',
       '- Daftar, unduhan, pemulihan dan optimisasi mendukung susunan lama serta folder baru. Pembersihan memakai lokasi terverifikasi dan ETag; file/folder ganda menghalangi pembersihan.',

@@ -21,6 +21,31 @@ const itemBase = item => {
   return `me/drive/items/${encodeURIComponent(item.id)}`;
 };
 
+// Never display Graph's free-form message, request URLs, or signed URLs.
+const graphCodes = new Set(['invalidRequest', 'badRequest', 'invalidArgument', 'badArgument', 'invalidResourceId', 'invalidCharacters', 'nameAlreadyExists', 'pathTooLong', 'itemNotFound', 'accessDenied', 'notSupported', 'quotaLimitReached', 'resourceModified', 'generalException', 'activityLimitReached', 'throttledRequest']);
+const graphOperation = (relative, method) => method === 'PUT' ? 'mengunggah file'
+  : method === 'DELETE' ? 'menghapus versi'
+  : method === 'POST' ? 'membuat folder'
+  : relative.split('?')[0].endsWith('/children') ? 'membaca isi folder'
+  : relative.endsWith(':/content') ? 'meminta unduhan'
+  : relative === ROOT ? 'memeriksa folder aplikasi' : 'membaca metadata file';
+async function graphDiagnostic(response) {
+  try {
+    const chunks = []; let length = 0;
+    for await (const chunk of response.body) {
+      length += chunk.length;
+      if (length > 16384) return [];
+      chunks.push(chunk);
+    }
+    const error = JSON.parse(Buffer.concat(chunks).toString('utf8')).error;
+    const codes = [];
+    for (let item = error, depth = 0; item && depth < 4; depth++, item = item.innerError || item.innererror) {
+      if (graphCodes.has(item.code) && !codes.includes(item.code)) codes.push(item.code);
+    }
+    return codes;
+  } catch { return []; }
+}
+
 export class OneDrive {
   constructor({ clientId, loadTokens, saveTokens, fetcher = fetch, resolveScope }) {
     Object.assign(this, { clientId, loadTokens, saveTokens, fetcher, resolveScope });
@@ -136,10 +161,21 @@ export class OneDrive {
     return this.refreshing;
   }
   async graph(relative, options = {}, expectedStatus) {
-    const response = await this.request(GRAPH + relative, { ...options, headers: { ...options.headers, Authorization: `Bearer ${await this.access()}` } });
+    const request = { ...options, headers: { ...options.headers, Authorization: `Bearer ${await this.access()}` } };
+    let response = await this.request(GRAPH + relative, request);
+    // A read-only compatibility retry can omit optional projection parameters.
+    // Never replay writes, alter pagination tokens, or retry permission errors.
+    const projection = relative.match(/^([^?]+)\?\$select=[a-zA-Z0-9,@.]+(?:&\$top=200)?$/);
+    if (response.status === 400 && expectedStatus === undefined && (!options.method || options.method === 'GET') && projection) {
+      await response.body?.cancel();
+      response = await this.request(GRAPH + projection[1], request);
+    }
     if (expectedStatus === undefined ? !response.ok : response.status !== expectedStatus) {
       const delay = Math.min(3600000, Math.max(0, Number(response.headers.get('retry-after')) || 0) * 1000);
-      throw Object.assign(new Error(response.status === 401 ? 'Sesi OneDrive berakhir. Hubungkan kembali akun.' : response.status === 507 ? 'Ruang OneDrive tidak cukup. Backup lokal tetap tersedia.' : `OneDrive gagal merespons (${response.status}). Antrean dipertahankan.`), { retryAfter: delay, status: response.status });
+      const operation = graphOperation(relative, options.method || 'GET');
+      const codes = await graphDiagnostic(response);
+      const diagnostic = `${response.status}${codes.length ? '; ' + codes.join(' / ') : ''}; ${operation}`;
+      throw Object.assign(new Error(response.status === 401 ? 'Sesi OneDrive berakhir. Hubungkan kembali akun.' : response.status === 507 ? 'Ruang OneDrive tidak cukup. Backup lokal tetap tersedia.' : `OneDrive gagal merespons (${diagnostic}). Antrean dipertahankan.`), { retryAfter: delay, status: response.status, codes, operation });
     }
     return response;
   }
