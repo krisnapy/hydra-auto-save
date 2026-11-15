@@ -96,3 +96,6 @@ Untuk repository privat, installer dan portable diunduh dari artifact workflow *
 Mulai 0.3.6 pesan memuat tahap seperti **membaca metadata file**, **membaca isi folder**, **membuat folder**, atau **mengunggah file**, serta kode Microsoft yang dikenali, misalnya `invalidRequest` atau `pathTooLong`. Pesan mentah dari penyedia dan URL privat tidak ditampilkan. Salin pesan diagnostik tersebut untuk pemeriksaan; jangan mengirim token atau file kredensial.
 
 Pembacaan metadata/daftar folder yang ditolak 400 dicoba satu kali tanpa parameter pemilihan properti opsional. Fallback ini hanya untuk pembacaan, tidak mengulang pembuatan folder/unggahan/penghapusan atau mengubah token pagination. Ini tidak menjamin semua respons 400 teratasi; penyebab pada akun pengguna tetap perlu dikonfirmasi. Antrean dan backup lokal dipertahankan. Sesudah pembaruan, tekan **Unggah backup terbaru / coba lagi**; jangan hapus antrean atau backup.
+
+
+Pada 0.3.7, pembuatan folder diperbarui agar memakai ID induk AppFolder dan parameter konflik melalui URL. Setelah memasang pembaruan, tekan **Unggah backup terbaru / coba lagi**. Tidak perlu membuat folder manual, mengganti nama folder, menghapus antrean, atau login ulang untuk menerapkan perubahan permintaan ini. Jika masih gagal, salin pesan diagnostik lengkap; penyelesaian pada akun pengguna masih perlu diverifikasi.

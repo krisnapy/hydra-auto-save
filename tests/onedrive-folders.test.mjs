@@ -34,17 +34,22 @@ export function graphFixture() {
     assert.equal(options.headers.Authorization, 'Bearer TEST-ONLY');
     const relative = url.pathname.slice('/v1.0/'.length);
     let parent, rest;
-    if (relative.startsWith(ROOT)) { parent = 'root'; rest = relative.slice(ROOT.length); }
+    if (relative.startsWith(ROOT)) {
+      if (options.method === 'POST') return Response.json({ error: { code: 'invalidRequest' } }, { status: 400 });
+      parent = 'root'; rest = relative.slice(ROOT.length);
+    }
     else {
       const match = /^me\/drive\/items\/([^/:]+)(.*)$/.exec(relative);
       assert.ok(match, relative); parent = decodeURIComponent(match[1]); rest = match[2];
-      if (!entries.has(parent)) return Response.json({}, { status: 404 });
+      if (parent === `approot-${driveId}`) parent = 'root';
+      if (parent !== 'root' && !entries.has(parent)) return Response.json({}, { status: 404 });
     }
-    if (!rest) return Response.json({ parentReference: { driveId } });
+    if (!rest) return Response.json({ id: `approot-${driveId}`, folder: {}, parentReference: { driveId } });
     if (rest === '/children') {
       if (options.method === 'POST') {
         const body = JSON.parse(options.body);
-        assert.equal(body['@microsoft.graph.conflictBehavior'], 'fail');
+        assert.equal(url.searchParams.get('@microsoft.graph.conflictBehavior'), 'fail');
+        assert.deepEqual(Object.keys(body).sort(), ['folder', 'name']);
         if (conflict) { conflict = false; insert(parent, body.name); return Response.json({}, { status: 409 }); }
         if ([...entries.values()].some(item => item.parent === parent && item.name === body.name)) return Response.json({}, { status: 409 });
         return Response.json(metadata(insert(parent, body.name)), { status: 201 });
@@ -190,4 +195,70 @@ test('upload limit diagnostics identify game, actual size and count without chan
   assert.match(cloud.error, /Backup lokal tetap tersedia/);
   const many = { files: Array.from({ length: 10001 }, () => ({ bytes: 0 })), roots: [] };
   await assert.rejects(packVersion({ versions: async () => [many] }, 'steam:1', 'version'), /10\.001 file/);
+});
+
+test('folder creation resolves app-root ID and uses explicit fail conflict query instead of POST to special alias', async () => {
+  const f = graphFixture(), provider = f.provider();
+  const old = await f.fetcher(`https://graph.microsoft.com/v1.0/${ROOT}/children`, {
+    method: 'POST', headers: { Authorization: 'Bearer TEST-ONLY' }, body: JSON.stringify({ name: 'old', folder: {}, '@microsoft.graph.conflictBehavior': 'fail' }),
+  });
+  assert.equal(old.status, 400, 'fixture reproduces rejection of the old special-alias request');
+  f.calls.length = 0;
+  const name = versionName('steam:1', 'canonical');
+  await provider.upload(name, Buffer.from('save'));
+  const posts = f.calls.filter(call => call.method === 'POST');
+  assert.equal(posts.length, 2);
+  assert.equal(new URL(posts[0].address).pathname, '/v1.0/me/drive/items/approot-drive-A/children');
+  assert.ok(posts.every(call => new URL(call.address).searchParams.get('@microsoft.graph.conflictBehavior') === 'fail'));
+  assert.ok(posts.every(call => !call.address.includes('/special/')));
+  assert.equal(f.calls.filter(call => call.method === 'GET' && call.address.endsWith(ROOT)).length, 1);
+  assert.equal((await provider.download(name)).toString(), 'save');
+  await provider.identity();
+  assert.equal(provider.appRootBase, 'me/drive/items/approot-drive-A');
+  f.setDrive('drive-B'); await provider.identity();
+  assert.equal(provider.appRootBase, 'me/drive/items/approot-drive-B');
+  provider.resetFolders(); assert.equal(provider.appRootBase, undefined);
+});
+
+test('invalid or mismatched app-root metadata blocks folder writes', async () => {
+  for (const root of [{ folder: {} }, { id: 'id' }, { id: 'id', folder: {}, parentReference: { driveId: 'other' } }]) {
+    const f = graphFixture(), provider = f.provider();
+    provider.driveId = 'drive-A';
+    provider.fetcher = async (address, options) => address.endsWith(ROOT) ? Response.json(root) : f.fetcher(address, options);
+    await assert.rejects(provider.upload(versionName('steam:1', 'bad-root'), Buffer.from('save')), /folder/i);
+    assert.equal(f.calls.filter(call => call.method === 'POST' || call.method === 'PUT').length, 0);
+  }
+});
+
+test('folder creation 400 preserves immutable outbox/local history and retry uploads the same job', async t => {
+  const root = await fs.mkdtemp(path.join(await fs.realpath(os.tmpdir()), 'hydra-folder-400-'));
+  const save = path.join(root, 'save'); await fs.mkdir(save); await fs.writeFile(path.join(save, 'slot.sav'), 'progress');
+  const controller = await new BackupController({ stateDirectory: path.join(root, 'state'), stableMs: 1, getGames: async () => [{ id: 'steam:292030', title: 'The Witcher 3' }], assertStopped: async () => {} }).init();
+  await controller.configure({ destination: path.join(root, 'backups'), retention: 2 });
+  await controller.manual('steam:292030', [{ path: save }]);
+  const f = graphFixture();
+  const cloud = await new CloudSync({ directory: path.join(root, 'outbox'), controller, fetcher: f.fetcher, vault: { load: async () => null, save: async () => {} } }).init();
+  t.after(async () => { await cloud.stop(); await controller.stop(); await fs.rm(root, { recursive: true, force: true }); });
+  cloud.connected = true; cloud.state.driveId = 'drive-A';
+  cloud.provider.loadTokens = async () => ({ access: 'TEST-ONLY', expiresAt: Date.now() + 1000000 });
+  controller.onBackupCompleted = (engine, id, version) => cloud.backupCompleted(engine, id, version);
+  const version = await controller.backup('steam:292030');
+  const job = cloud.state.jobs[0], outbox = cloud.packageFile(job);
+  const before = digest(await fs.readFile(outbox));
+  let posts = 0;
+  cloud.provider.fetcher = async (address, options) => {
+    if (options.method === 'POST') { posts++; return Response.json({ error: { code: 'invalidRequest' } }, { status: 400 }); }
+    return f.fetcher(address, options);
+  };
+  await cloud.tick();
+  assert.equal(posts, 1, 'failed POST is not replayed automatically');
+  assert.match(cloud.error, /The Witcher 3.*400; invalidRequest; membuat folder/);
+  assert.equal(job.uploadedAt, undefined); assert.equal(digest(await fs.readFile(outbox)), before);
+  assert.ok((await controller.engine.versions('steam:292030')).some(item => item.id === version.id));
+  assert.equal(f.entries.size, 0);
+  cloud.provider.fetcher = f.fetcher; job.nextAt = 0;
+  await cloud.tick();
+  assert.equal(cloud.error, ''); assert.ok(job.uploadedAt);
+  assert.equal(cloud.state.jobs.length, 1);
+  await assert.rejects(fs.stat(outbox), { code: 'ENOENT' });
 });

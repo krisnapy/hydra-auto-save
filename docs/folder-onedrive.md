@@ -22,3 +22,10 @@ Pesan kegagalan unggahan sekarang menyebut nama dan ID game. Jika batas terlampa
 Pengujian memakai simulasi Graph untuk folder, unggahan, daftar riwayat, unduhan, konflik, ETag, akun, serta pemulihan dan retensi pada campuran data lama/baru. Belum menjalankan operasi folder pada akun OneDrive nyata.
 
 Referensi API: [pembuatan folder](https://learn.microsoft.com/en-us/graph/api/driveitem-post-children?view=graph-rest-1.0) dan [daftar isi folder](https://learn.microsoft.com/en-us/graph/api/driveitem-list-children?view=graph-rest-1.0).
+
+
+### Perbaikan pembuatan folder pada 0.3.7
+
+Diagnostik pengguna mempersempit respons 400 `invalidRequest` ke operasi **membuat folder**. Mulai 0.3.7, aplikasi mengambil ID AppFolder dan mengirim pembuatan subfolder lewat `POST /me/drive/items/{parent-id}/children?@microsoft.graph.conflictBehavior=fail`, dengan JSON `name` dan `folder` saja. Ini mengganti POST langsung pada alias `special/approot` dan konflik di badan JSON; tidak mengubah susunan atau identitas folder. ID AppFolder diverifikasi dan cache dibuang saat putus koneksi/pergantian akun. Konflik 409 tetap dibaca ulang dan hanya folder yang identitasnya cocok yang dipakai.
+
+Regresi menyimulasikan penolakan POST melalui alias, memeriksa endpoint/parameter baru, penolakan ID induk tidak valid atau akun tidak sesuai, serta antrean tetap utuh pada 400 dan unggahan pekerjaan yang sama setelah retry. Bukti tersebut merupakan uji simulasi, belum verifikasi bahwa kasus pada akun pengguna telah selesai.

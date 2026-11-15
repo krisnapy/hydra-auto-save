@@ -51,7 +51,7 @@ export class OneDrive {
     Object.assign(this, { clientId, loadTokens, saveTokens, fetcher, resolveScope });
     this.resetFolders();
   }
-  resetFolders() { this.folders = new Map(); this.locations = new Map(); }
+  resetFolders() { this.folders = new Map(); this.locations = new Map(); this.appRootBase = undefined; }
   scope(prefix) {
     const value = this.resolveScope?.(prefix);
     if (!value) return null;
@@ -73,6 +73,16 @@ export class OneDrive {
     if (relative) throw new Error('Terlalu banyak versi cloud. Periksa folder aplikasi OneDrive.');
     return result;
   }
+  async folderParent(base) {
+    if (base !== ROOT) return base;
+    if (this.appRootBase) return this.appRootBase;
+    // Resolve the special-folder alias, then POST through the documented
+    // parent item endpoint. Keep the same app folder and permission scope.
+    const root = await (await this.graph(ROOT)).json();
+    if (!root?.folder || (this.driveId && root.parentReference?.driveId !== this.driveId)) throw new Error('Folder aplikasi OneDrive belum dapat diverifikasi. Coba unggah kembali.');
+    this.appRootBase = itemBase(root);
+    return this.appRootBase;
+  }
   async childFolder(base, suffix, label, create, entries) {
     const find = items => {
       const matches = items.filter(item => typeof item.name === 'string' && item.name.endsWith(suffix));
@@ -85,7 +95,8 @@ export class OneDrive {
     const name = folderLabel(label, 'Backup') + suffix;
     let item;
     try {
-      item = await (await this.graph(`${base}/children`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, folder: {}, '@microsoft.graph.conflictBehavior': 'fail' }) })).json();
+      const parent = await this.folderParent(base);
+      item = await (await this.graph(`${parent}/children?@microsoft.graph.conflictBehavior=fail`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, folder: {} }) })).json();
     } catch (error) {
       if (error.status !== 409) throw error;
       item = find(await this.children(base));
@@ -184,6 +195,10 @@ export class OneDrive {
     const driveId = root.parentReference?.driveId;
     if (typeof driveId !== 'string' || !driveId) throw new Error('Identitas OneDrive belum dapat diverifikasi.');
     if (this.driveId !== driveId) { this.resetFolders(); this.driveId = driveId; }
+    if (root.id !== undefined) {
+      if (!root.folder) throw new Error('Folder aplikasi OneDrive belum dapat diverifikasi.');
+      this.appRootBase = itemBase(root);
+    }
     return driveId;
   }
   async upload(name, bytes) {
