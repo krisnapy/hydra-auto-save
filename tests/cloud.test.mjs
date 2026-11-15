@@ -189,7 +189,8 @@ test('OneDrive download falls back to a manual Graph redirect when metadata omit
     }
     assert.equal(url, signed);
     assert.equal(options.headers, undefined);
-    assert.equal(options.redirect, 'error');
+    assert.equal(options.redirect, 'manual');
+    assert.equal(options.credentials, 'omit');
     signedRequests++;
     return new Response('package');
   } });

@@ -45,6 +45,10 @@ module.exports = async ({ github, context, core }) => {
     body: [
       'Versi uji awal berbasis Hydra Launcher 4.3.0.', '',
       `## Perubahan ${version}`,
+      '- Mendukung host unduhan/verifikasi my.microsoftpersonalcontent.com selain domain sebelumnya.',
+      '- Pengalihan unduhan ditangani manual maksimal tiga kali, dengan pemeriksaan HTTPS/domain setiap tujuan dan tanpa bearer token/cookie. URL dengan kredensial/port khusus, tujuan palsu/lokal dan loop ditolak.',
+      '- Pesan alamat ditolak menampilkan hostname saja, tanpa path/query/tanda tangan. Ukuran dan hash backup tetap diverifikasi; antrean lama dapat dicoba lagi.',
+      '- Host pada laporan pengguna belum diketahui; keberhasilan pada akun OneDrive pengguna masih perlu dikonfirmasi. Jangan mengirim URL lengkap atau token saat melaporkan kegagalan.',
       '- Memperbaiki permintaan pembuatan folder: ambil ID AppFolder, gunakan endpoint parent-item/children, dan kirim conflictBehavior=fail lewat URL dengan body name/folder saja.',
       '- Susunan folder, identitas backup, izin AppFolder dan antrean lama tetap dipakai. Tidak memindahkan atau menghapus data cloud.',
       '- Regresi menguji penolakan endpoint alias lama, request baru, konflik409, cache akun serta antrean tetap utuh ketika pembuatan folder gagal400 dan pekerjaan yang sama berhasil setelah retry.',

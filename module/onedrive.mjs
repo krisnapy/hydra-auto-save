@@ -46,6 +46,20 @@ async function graphDiagnostic(response) {
   } catch { return []; }
 }
 
+function downloadAddress(address, base) {
+  if (typeof address !== 'string' || !address || address.length > 16384 || /[\x00-\x20\x7f\\]/.test(address)) throw new Error('Alamat unduhan OneDrive tidak valid. Muat ulang daftar versi lalu coba lagi.');
+  let url;
+  try { url = base ? new URL(address, base) : new URL(address); }
+  catch { throw new Error('Alamat unduhan OneDrive tidak valid. Muat ulang daftar versi lalu coba lagi.'); }
+  const supported = url.hostname === 'my.microsoftpersonalcontent.com' || url.hostname.endsWith('.1drv.com') || url.hostname.endsWith('.sharepoint.com') || url.hostname.endsWith('.storage.live.com');
+  if (url.protocol !== 'https:' || url.username || url.password || url.port || url.hash || !supported) {
+    // A hostname alone is useful for support; never include path/query/signature.
+    const host = /^[a-z0-9.-]{1,253}$/.test(url.hostname) ? ` (domain: ${url.hostname})` : '';
+    throw new Error(`Alamat unduhan OneDrive tidak dikenali${host}.`);
+  }
+  return url.href;
+}
+
 export class OneDrive {
   constructor({ clientId, loadTokens, saveTokens, fetcher = fetch, resolveScope }) {
     Object.assign(this, { clientId, loadTokens, saveTokens, fetcher, resolveScope });
@@ -246,6 +260,22 @@ export class OneDrive {
     const response = await this.graph(item, { method: 'DELETE', headers: { 'If-Match': eTag } });
     if (response.status !== 204) throw new Error('Hasil pembersihan OneDrive belum dapat dipastikan. Periksa ulang daftar versi.');
   }
+  async signedDownload(address) {
+    let current = downloadAddress(address);
+    const seen = new Set();
+    for (let redirects = 0; redirects <= 3; redirects++) {
+      if (seen.has(current)) throw new Error('Pengalihan unduhan OneDrive berulang. Coba muat ulang daftar versi.');
+      seen.add(current);
+      // Signed URLs are fetched without bearer tokens or cookies. Validate each
+      // Location ourselves rather than letting fetch follow arbitrary hosts.
+      const response = await this.request(current, { redirect: 'manual', credentials: 'omit' });
+      if (![301, 302, 303, 307, 308].includes(response.status)) return response;
+      const location = response.headers.get('location');
+      await response.body?.cancel();
+      if (redirects === 3) throw new Error('Terlalu banyak pengalihan unduhan OneDrive. Coba muat ulang daftar versi.');
+      current = downloadAddress(location, current);
+    }
+  }
   async download(name) {
     if (!storageName(name)) throw new Error('Nama versi cloud tidak valid.');
     const { item, metadata } = await this.metadata(name);
@@ -256,10 +286,7 @@ export class OneDrive {
       const redirect = await this.graph(`${item}:/content`, { redirect: 'manual' }, 302);
       address = redirect.headers.get('location');
     }
-    if (typeof address !== 'string' || !URL.canParse(address)) throw new Error('Alamat unduhan OneDrive tidak valid. Muat ulang daftar versi lalu coba lagi.');
-    const url = new URL(address);
-    if (url.protocol !== 'https:' || url.username || url.password || url.port || !(url.hostname.endsWith('.files.1drv.com') || url.hostname.endsWith('.1drv.com') || url.hostname.endsWith('.sharepoint.com') || url.hostname.endsWith('.storage.live.com'))) throw new Error('Alamat unduhan OneDrive tidak dikenali.');
-    const response = await this.request(url.href);
+    const response = await this.signedDownload(address);
     if (!response.ok) throw new Error('Unduhan OneDrive gagal. Coba muat ulang daftar versi.');
     const chunks = []; let length = 0;
     for await (const chunk of response.body) {
