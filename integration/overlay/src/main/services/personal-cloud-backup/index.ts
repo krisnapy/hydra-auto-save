@@ -1,11 +1,14 @@
 import { app, BrowserWindow } from "electron";
 import path from "node:path";
 import fs from "node:fs";
+import { HydraApi } from "../hydra-api";
+import { accountKey, hydraIdentity } from "./core/backup-account.mjs";
 import { gamesSublevel, levelKeys } from "@main/level";
 import { NativeAddon } from "../native-addon";
 import { isGameRunning } from "../game-running-state";
 import { logger } from "../logger";
 import { launchedGamePids } from "../launched-game-pids";
+import { ProfileRecovery } from "./core/profile-recovery.mjs";
 import { BackupController } from "./core/controller.mjs";
 import { withRestoreGate } from "./core/launch-guard.mjs";
 import { runWithHydraSaveGuard } from "../epic/cloud-saves";
@@ -13,6 +16,22 @@ import { getOneDrive, stopOneDrive } from "./onedrive";
 import type { Game } from "@types";
 
 let instance: Promise<BackupController> | undefined;
+let activeKey: string | undefined;
+let transition: Promise<BackupController> | undefined;
+let authRevision = 0;
+const currentHydra = () => {
+  const context = HydraApi.getAuthContext();
+  return context?.userId ? hydraIdentity({ userId: context.userId, server: import.meta.env.MAIN_VITE_API_URL }) : null;
+};
+let subscribed = false;
+const subscribeToHydra = () => {
+  if (subscribed) return;
+  subscribed = true;
+  HydraApi.onAuthContextChanged(() => {
+    authRevision++;
+    if (instance) void getPersonalBackup().then(controller => controller.start()).catch(error => logger.warn("[Personal Backup] Account switch", error));
+  });
+};
 
 const library = async () => {
   const games: Game[] = await gamesSublevel.values().all();
@@ -39,10 +58,12 @@ const assertStopped = async (gameId: string) => {
   }
 };
 
-export const getPersonalBackup = () => {
+const createPersonalBackup = (hydra: ReturnType<typeof currentHydra>, revision: number) => {
   if (process.platform !== "win32") throw new Error("Personal Cloud Backup tahap awal hanya tersedia di Windows.");
-  instance ??= new BackupController({
-    stateDirectory: path.join(app.getPath("userData"), "personal-cloud-backup"),
+  return new BackupController({
+    getAccount: currentHydra,
+    assertSession: () => { if (revision !== authRevision) throw new Error("Sesi Hydra berubah. Muat ulang backup."); },
+    stateDirectory: hydra ? path.join(app.getPath("userData"), "personal-cloud-backup", "profiles", accountKey(hydra)) : path.join(app.getPath("userData"), "personal-cloud-backup"),
     getGames: async () => (await library()).map(game => ({ id: levelKeys.game(game.shop, game.objectId), title: game.title, shop: game.shop, objectId: game.objectId, running: isGameRunning(game.objectId, game.shop) || launchedGamePids.has(levelKeys.game(game.shop, game.objectId)) })),
     isBackground: () => !BrowserWindow.getAllWindows().some(window => !window.isDestroyed() && window.isVisible() && !window.isMinimized()),
     assertStopped,
@@ -61,7 +82,25 @@ export const getPersonalBackup = () => {
     catch (error) { logger.warn("[OneDrive]", error); }
     return controller;
   });
-  return instance;
+};
+
+export const getPersonalBackup = (): Promise<BackupController> => {
+  subscribeToHydra();
+  const key = `${accountKey(currentHydra())}:${authRevision}`;
+  if (instance && activeKey === key) return instance;
+  if (transition) return transition.then(() => getPersonalBackup());
+  const previous = instance;
+  transition = (async () => {
+    if (previous) {
+      const controller = await previous.catch(() => undefined);
+      if (controller) { await stopOneDrive(controller); await controller.stop(); }
+    }
+    const hydra = currentHydra(), revision = authRevision;
+    activeKey = `${accountKey(hydra)}:${revision}`;
+    instance = createPersonalBackup(hydra, revision);
+    return instance;
+  })().finally(() => { transition = undefined; });
+  return transition.then(controller => activeKey === `${accountKey(currentHydra())}:${authRevision}` ? controller : getPersonalBackup());
 };
 
 export const startPersonalBackup = async () => {
@@ -69,7 +108,7 @@ export const startPersonalBackup = async () => {
 };
 
 export const stopPersonalBackup = async () => {
-  if (instance) { await (await instance).stop(); await stopOneDrive(); }
+  if (instance) { await (await instance).stop(); await stopOneDrive(await instance); }
 };
 
 export const onPersonalBackupGameClosed = (game: Game) => {
@@ -85,3 +124,11 @@ export const restorePersonalBackup = (gameId: string, versionId: string) =>
 
 export const recoverPersonalBackup = (gameId: string) =>
   withRestoreGate(gameId, () => runWithHydraSaveGuard(async () => (await getPersonalBackup()).recover(gameId)));
+
+const profileRecoveries = new WeakMap<BackupController, ProfileRecovery>();
+export const getProfileRecovery = async () => {
+  const controller = await getPersonalBackup();
+  let recovery = profileRecoveries.get(controller);
+  if (!recovery) { recovery = new ProfileRecovery(controller); profileRecoveries.set(controller, recovery); }
+  return recovery;
+};

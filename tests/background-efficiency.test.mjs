@@ -86,7 +86,7 @@ for (const [file, component, props] of [
     require: name => name === 'react' ? {
       useRef: value => ({ current: value }), useState: value => [value, () => {}],
       useEffect: fn => effects.push(fn), useCallback: fn => fn,
-    } : name.endsWith('.scss') ? {} : name === './personal-onedrive' ? { PersonalOneDrive: () => null } : require(name),
+    } : name.endsWith('.scss') ? {} : (name === './personal-onedrive' || name === './profile-recovery') ? { PersonalOneDrive: () => null } : require(name),
   });
   exports[component](props); const cleanup = effects[0]();
   assert.equal(calls, 1);

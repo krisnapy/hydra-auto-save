@@ -1,9 +1,10 @@
 import type { BackupController } from './controller.mjs';
 export interface CloudSnapshot {
+  account?: { hydra: { server: string; userId: string } | null; oneDriveDriveId: string | null; matched: boolean };
   notice?: string;
   provider: 'onedrive'; clientId: string; connected: boolean;
   login: { userCode: string; expiresAt: number; url: string } | null;
-  pending: number; uploaded: number; uploading: boolean; error: string; lastUploadedAt?: string;
+  held?: number; pending: number; uploaded: number; uploading: boolean; error: string; lastUploadedAt?: string;
   autoRetention: boolean; retention: number;
   versions: Array<{ name: string; modifiedAt: string; size: number }>;
 }

@@ -2,9 +2,10 @@ import * as fs from 'node:fs/promises';
 import path from 'node:path';
 import { hostname } from 'node:os';
 import { OneDrive, validClientId, cloudName, objectName, DEFAULT_CLIENT_ID } from './onedrive.mjs';
-import { packVersion, importVersion, validateBundle, validateValue, splitSharedBundle, readSharedIndex, materializeShared, sharedObjectName } from './cloud-bundle.mjs';
+import { packVersion, unpackBundle, importVersion, validateBundle, validateValue, splitSharedBundle, readSharedIndex, materializeShared, sharedObjectName } from './cloud-bundle.mjs';
 import { atomicJson, digest, safePath } from './engine.mjs';
 import { randomUUID } from 'node:crypto';
+import { backupAccount, accountMatch } from './backup-account.mjs';
 
 // Persistent outbox owns a copy of each package, independent of local retention.
 // Version cleanup is confirmed manually or enabled explicitly in settings.
@@ -12,6 +13,21 @@ export class CloudSync {
   constructor({ directory, controller, vault, fetcher }) {
     Object.assign(this, { directory, controller, vault, fetcher });
     this.error = ''; this.remote = new Map(); this.stopped = false;
+  }
+  accountEnabled() { return this.controller?.getAccount !== undefined; }
+  assertHydra() {
+    this.controller.assertAccount?.();
+    if (this.accountEnabled() && !this.controller.hydraAccount) throw new Error('Login Hydra terlebih dahulu sebelum menghubungkan OneDrive.');
+  }
+  binding() { return backupAccount(this.controller.hydraAccount ?? null, this.state.driveId || null); }
+  bindingMatches() { return !this.accountEnabled() || JSON.stringify(this.state.accountBinding) === JSON.stringify(this.binding()); }
+  assertBinding() {
+    this.assertHydra();
+    if (!this.bindingMatches()) throw new Error('Pasangan akun Hydra dan OneDrive belum cocok. Hubungkan ulang OneDrive pada profil Hydra ini.');
+  }
+  jobMatches(job) { return !this.accountEnabled() || job.accountKey === digest(JSON.stringify(this.binding())); }
+  assertManifestAccount(manifest) {
+    if (this.accountEnabled() && accountMatch(manifest.account, this.controller.hydraAccount, this.state.driveId) !== 'matched') throw new Error('Pemilik backup tidak cocok dengan akun Hydra dan OneDrive aktif. Backup lama tanpa pemilik harus ditautkan melalui pemulihan profil lama.');
   }
   async init() {
     await safePath(this.directory);
@@ -43,8 +59,9 @@ export class CloudSync {
   }
   startTimer() {
     if (this.stopped || this.job || this.loginJob || this.maintenanceJob) return;
+    if (this.accountEnabled() && (!this.controller.hydraAccount || !this.bindingMatches()) && !this.login) return;
     const now = Date.now();
-    const pending = this.connected ? this.state.jobs.filter(job => !job.uploadedAt && job.driveId === this.state.driveId) : [];
+    const pending = this.connected ? this.state.jobs.filter(job => !job.uploadedAt && job.driveId === this.state.driveId && this.jobMatches(job)) : [];
     const deadline = this.login ? Math.min(this.nextLoginAt, this.login.expiresAt)
       : pending.length ? Math.min(...pending.map(job => job.nextAt > now ? job.nextAt : now + 5000)) : undefined;
     if (deadline === undefined) { clearTimeout(this.timer); this.timer = undefined; this.timerAt = undefined; return; }
@@ -62,14 +79,16 @@ export class CloudSync {
     return this.saving;
   }
   snapshot(gameId) {
-    const jobs = this.state.jobs.filter(j => (!gameId || j.gameId === gameId) && j.driveId === this.state.driveId);
-    return { provider: 'onedrive', clientId: this.state.clientId, connected: this.connected, login: this.login ? { userCode: this.login.userCode, expiresAt: this.login.expiresAt, url: this.login.url } : null,
+    const jobs = this.state.jobs.filter(j => (!gameId || j.gameId === gameId) && j.driveId === this.state.driveId && this.jobMatches(j));
+    return { account: this.accountEnabled() ? { hydra: this.controller.hydraAccount, oneDriveDriveId: this.state.driveId || null, matched: this.connected && this.bindingMatches() && Boolean(this.controller.hydraAccount) } : undefined, provider: 'onedrive', clientId: this.state.clientId, connected: this.connected, login: this.login ? { userCode: this.login.userCode, expiresAt: this.login.expiresAt, url: this.login.url } : null,
       pending: jobs.filter(j => !j.uploadedAt).length, uploaded: jobs.filter(j => j.uploadedAt).length,
+      held: this.state.jobs.filter(j => !j.uploadedAt && !this.jobMatches(j)).length,
       uploading: jobs.some(j => j.name === this.uploading), error: this.error, lastUploadedAt: jobs.filter(j => j.uploadedAt).map(j => j.uploadedAt).sort().at(-1),
       autoRetention: this.autoRetentionEnabled(), retention: this.controller.engine?.retention ?? 10,
       versions: this.remote.get(gameId)?.map(item => ({ name: item.name, modifiedAt: item.lastModifiedDateTime, size: item.size })) ?? [] };
   }
   async begin(clientId) {
+    this.assertHydra();
     if (this.connected || this.login || this.job || this.loginJob) throw new Error('Putuskan koneksi atau batalkan login sebelumnya terlebih dahulu.');
     if (!validClientId(clientId)) throw new Error('Application (client) ID tidak valid.');
     // Serialize before the first await, including device-code creation.
@@ -94,13 +113,17 @@ export class CloudSync {
   }
   packageFile(job) { return path.join(this.directory, `${digest(`${job.driveId}:${job.name}`)}.hpb`); }
   async enqueue(engine, gameId, versionId) {
+    this.assertBinding();
     if (!this.state.driveId || !this.connected) return;
     const driveId = this.state.driveId;
     // Check before reading/repacking saves. Uploaded receipts and pending jobs
     // both already own this immutable version for this account.
     const prefix = `${digest(gameId)}_${engine.deviceId}_${versionId}_`;
     if (this.state.jobs.some(j => j.driveId === driveId && j.gameId === gameId && j.name.startsWith(prefix))) return;
-    const bytes = await packVersion(engine, gameId, versionId, { shared: true });
+    const local = (await engine.versions(gameId, { fresh: true, versionId }))[0];
+    if (this.accountEnabled() && (!local || accountMatch(local.account, this.controller.hydraAccount) !== 'matched')) throw new Error('Backup lokal belum cocok dengan akun Hydra aktif. Tautkan backup lama melalui pemulihan profil lama.');
+    const bytes = await packVersion(engine, gameId, versionId, { shared: true, ...(this.accountEnabled() ? { account: this.binding() } : {}) });
+    this.assertBinding();
     if (!this.connected || this.stopped || this.state.driveId !== driveId) throw new Error('Koneksi OneDrive berubah selama persiapan. Coba unggah ulang dari riwayat lokal.');
     const bundle = splitSharedBundle(bytes);
     const name = `${digest(gameId)}_${engine.deviceId}_${versionId}_${digest(bundle.index)}.hpb`;
@@ -116,7 +139,7 @@ export class CloudSync {
       await fs.writeFile(temporary, bytes, { mode: 0o600, flag: 'wx' });
       await fs.rename(temporary, file);
     } finally { await fs.rm(temporary, { force: true }); }
-    this.state.jobs.push({ name, gameId, driveId: this.state.driveId, bytes: bytes.length, outboxHash: digest(bytes), attempts: 0, nextAt: 0 });
+    this.state.jobs.push({ name, gameId, driveId: this.state.driveId, bytes: bytes.length, ...(this.accountEnabled() ? { accountKey: digest(JSON.stringify(this.binding())) } : {}), outboxHash: digest(bytes), attempts: 0, nextAt: 0 });
     await this.save();
     this.startTimer();
   }
@@ -146,6 +169,7 @@ export class CloudSync {
     return this.job;
   }
   async run() {
+    this.assertHydra();
     if (this.login) {
       if (Date.now() >= this.login.expiresAt) { this.login = null; throw new Error('Kode login Microsoft kedaluwarsa. Mulai login kembali.'); }
       if (Date.now() < this.nextLoginAt) return;
@@ -153,7 +177,10 @@ export class CloudSync {
         await this.provider.completeLogin(this.login.code);
         const driveId = await this.provider.identity();
         // Jobs remain bound to their original drive. Connecting another account never uploads them.
-        this.state.driveId = driveId; this.connected = true; this.login = null; this.error = ''; await this.save();
+        this.assertHydra();
+        this.state.driveId = driveId;
+        if (this.accountEnabled()) this.state.accountBinding = this.binding();
+        this.connected = true; this.login = null; this.error = ''; await this.save();
       } catch (error) {
         if (error.code === 'authorization_pending' || error.code === 'slow_down') {
           if (error.code === 'slow_down') this.login.interval += 5000;
@@ -164,7 +191,8 @@ export class CloudSync {
       return;
     }
     if (!this.connected) return;
-    const job = this.state.jobs.find(j => !j.uploadedAt && j.driveId === this.state.driveId && j.nextAt <= Date.now());
+    this.assertBinding();
+    const job = this.state.jobs.find(j => !j.uploadedAt && j.driveId === this.state.driveId && this.jobMatches(j) && j.nextAt <= Date.now());
     if (!job) return;
     this.uploading = job.name;
     try {
@@ -174,6 +202,7 @@ export class CloudSync {
       if (bytes.length !== job.bytes || digest(bytes) !== (job.outboxHash ?? job.name.slice(-68, -4))) throw new Error('Paket antrean rusak. Buat ulang dari riwayat backup lokal.');
       if (job.outboxHash) {
         const bundle = splitSharedBundle(bytes);
+        this.assertManifestAccount(bundle.value.manifest);
         if (digest(bundle.index) !== job.name.slice(-68, -4) || bundle.value.manifest.gameId !== job.gameId || bundle.value.manifest.deviceId !== this.controller.state.deviceId) throw new Error('Identitas paket antrean tidak sesuai.');
         for (const object of bundle.value.objects) {
           const name = sharedObjectName(bundle.value.manifest, object);
@@ -181,14 +210,19 @@ export class CloudSync {
           try { stored = await this.provider.download(name); }
           catch (error) { if (error.status !== 404) throw error; }
           if (!stored || digest(stored) !== object.storedHash || stored.length !== object.storedBytes) {
+            this.assertBinding();
             await this.provider.upload(name, bundle.objects.get(object.storedHash));
             stored = await this.provider.download(name);
           }
           if (stored.length !== object.storedBytes || digest(stored) !== object.storedHash) throw new Error('File cloud belum terverifikasi; versi belum diterbitkan.');
         }
+        this.assertBinding();
         await this.provider.upload(job.name, bundle.index);
         if (digest(await this.provider.download(job.name)) !== digest(bundle.index)) throw new Error('Daftar file versi cloud belum terverifikasi.');
-      } else await this.provider.upload(job.name, bytes);
+      } else {
+        if (this.accountEnabled()) this.assertManifestAccount((await unpackBundle(bytes)).manifest);
+        this.assertBinding(); await this.provider.upload(job.name, bytes);
+      }
       job.uploadedAt = new Date().toISOString(); this.error = '';
       await this.save();
       await fs.rm(file, { force: true });
@@ -202,6 +236,7 @@ export class CloudSync {
     } finally { this.uploading = undefined; }
   }
   async sync(gameId) {
+    this.assertBinding();
     if (!this.connected) throw new Error('Hubungkan OneDrive terlebih dahulu.');
     await this.controller.control(async () => {
       const engine = this.controller.engine;
@@ -220,20 +255,24 @@ export class CloudSync {
     await this.save(); void this.tick();
   }
   async list(gameId) {
+    this.assertBinding();
     if (!this.connected) throw new Error('Hubungkan OneDrive terlebih dahulu.');
     const prefix = `${digest(gameId)}_${this.controller.state.deviceId}_`;
     const versions = await this.provider.list(prefix);
     this.remote.set(gameId, versions.sort((a, b) => b.name.localeCompare(a.name)));
   }
   async remoteValue(gameId, roots, name, bytes) {
-    if (bytes[0] === 0x1f) return validateBundle(this.controller.engine, gameId, roots, bytes);
+    this.assertBinding();
+    if (bytes[0] === 0x1f) { const value = await validateBundle(this.controller.engine, gameId, roots, bytes); this.assertManifestAccount(value.manifest); return value; }
     const { manifest } = readSharedIndex(bytes);
+    this.assertManifestAccount(manifest);
     const prefix = `${digest(gameId)}_${this.controller.state.deviceId}_${manifest.id}_`;
     if (manifest.gameId !== gameId || manifest.deviceId !== this.controller.state.deviceId || !name.startsWith(prefix)) throw new Error('Identitas versi cloud tidak sesuai.');
     const value = await materializeShared(bytes, (_, objectName) => this.provider.download(objectName));
     return validateValue(this.controller.engine, gameId, roots, value);
   }
   async setAutoRetention(enabled) {
+    this.assertBinding();
     if (typeof enabled !== 'boolean') throw new Error('Pengaturan retensi cloud tidak valid.');
     if (!this.connected || !this.state.driveId) throw new Error('Hubungkan OneDrive terlebih dahulu.');
     await this.controller.control(async () => {
@@ -243,11 +282,13 @@ export class CloudSync {
     }, 'settings');
   }
   async download(gameId, name) {
+    this.assertBinding();
     if (!this.connected || !this.remote.get(gameId)?.some(v => v.name === name)) throw new Error('Muat ulang daftar versi cloud sebelum mengunduh.');
     await this.controller.control(async () => {
       const engine = this.controller.engine, roots = this.controller.state.games[gameId]?.roots;
       if (!engine || !roots?.length) throw new Error('Atur folder backup dan lokasi save terlebih dahulu.');
       const bytes = await this.provider.download(name);
+      this.assertBinding();
       if (digest(bytes) !== name.slice(-68, -4)) throw new Error('Integritas paket cloud gagal.');
       await importVersion(engine, gameId, roots, await this.remoteValue(gameId, roots, name, bytes));
     }, 'cloud-download', gameId);
@@ -262,6 +303,7 @@ export class CloudSync {
     return this.maintenanceJob;
   }
   async optimizationPlan(gameId) {
+    this.assertBinding();
     const engine = this.controller.engine;
     if (!engine || !this.connected || this.stopped || !this.state.driveId) throw new Error('Hubungkan OneDrive dan pilih folder backup lokal terlebih dahulu.');
     const driveId = this.state.driveId;
@@ -377,6 +419,7 @@ export class CloudSync {
         for (const item of plan.candidates) {
           this.controller.progress?.(gameId, 'optimization-cleaning', removed, totalCleanup);
           if (this.stopped || !this.connected || this.state.driveId !== plan.driveId || await this.provider.identity() !== plan.driveId) throw new Error('Akun atau koneksi berubah. Pembersihan dihentikan.');
+          this.assertBinding();
           await this.provider.remove(item.name, item.eTag);
           removed++; removedNames.add(item.name); savedBytes += item.size;
           this.state.jobs = this.state.jobs.filter(j => !(j.uploadedAt && j.driveId === plan.driveId && j.name === item.name));
@@ -394,6 +437,7 @@ export class CloudSync {
           }
           current.sort((a, b) => a[0].localeCompare(b[0]));
           if (JSON.stringify(current) !== JSON.stringify(plan.signature.filter(([name]) => !removedNames.has(name)))) throw stale();
+          this.assertBinding();
           await this.provider.remove(item.name, item.eTag);
           removedObjects++; savedBytes += item.size;
         }

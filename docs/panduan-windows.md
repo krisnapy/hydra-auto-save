@@ -106,3 +106,8 @@ Pada 0.3.7, pembuatan folder diperbarui agar memakai ID induk AppFolder dan para
 Mulai 0.3.8, pembacaan/verifikasi file mendukung `my.microsoftpersonalcontent.com` selain domain penyimpanan sebelumnya. Alamat harus berasal dari metadata Microsoft Graph atau pengalihan unduhannya. HTTPS, domain, port dan kredensial URL diperiksa; setiap pengalihan diperiksa lagi dan dibatasi tiga kali. Token login/cookie tidak dikirim ke alamat unduhan. Ukuran file dan hash backup tetap diperiksa.
 
 Pesan penolakan menyertakan hostname bila formatnya aman, tanpa path/query/tanda tangan. Jika masih gagal, salin pesan itu saja; jangan kirim URL lengkap, token, atau tautan unduhan bertanda tangan. Setelah memasang pembaruan, tekan **Unggah backup terbaru / coba lagi**. Antrean lama tetap dapat dilanjutkan; tidak perlu menghapus backup atau menghubungkan ulang akun untuk menerapkan perubahan ini. Host pada laporan pengguna sebelum 0.3.8 belum diketahui dan keberhasilan pada akun tersebut masih perlu dikonfirmasi.
+
+
+## Restore setelah install ulang Windows
+
+Kode kandidat 0.3.9 menyediakan **Pulihkan dari perangkat/profil lama** di halaman game. Pilih folder backup lama atau akun OneDrive, pilih versi, petakan semua lokasi save ke profil baru, lalu konfirmasi. Backup sumber tetap tersimpan. Profil lama tidak perlu ada. [Panduan lengkap dan batas verifikasi](pemulihan-profil-lama.md). Fitur belum masuk installer terbit.

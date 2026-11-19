@@ -1,16 +1,18 @@
-import { app, safeStorage } from "electron";
+import { safeStorage } from "electron";
 import * as fs from "node:fs/promises";
 import path from "node:path";
 import { CloudSync } from "./core/cloud-sync.mjs";
 import { safePath } from "./core/engine.mjs";
 import type { BackupController } from "./core/controller.mjs";
 
-let cloud: Promise<CloudSync> | undefined;
+const clouds = new WeakMap<BackupController, Promise<CloudSync>>();
 let commandTail: Promise<unknown> = Promise.resolve();
 
 export const getOneDrive = (controller: BackupController) => {
-  cloud ??= (async () => {
-    const directory = path.join(app.getPath("userData"), "personal-cloud-backup", "onedrive");
+  let cloud = clouds.get(controller);
+  if (cloud) return cloud;
+  cloud = (async () => {
+    const directory = path.join(controller.stateDirectory, "onedrive");
     const tokenFile = path.join(directory, "credentials.bin");
     const checkStorage = () => {
       if (!safeStorage.isEncryptionAvailable()) throw new Error("Perlindungan kredensial Windows belum tersedia. Login OneDrive dinonaktifkan.");
@@ -39,6 +41,7 @@ export const getOneDrive = (controller: BackupController) => {
     controller.onBackupCompleted = (engine, gameId, manifest) => instance.backupCompleted(engine, gameId, manifest);
     return instance;
   })();
+  clouds.set(controller, cloud);
   return cloud;
 };
 
@@ -47,4 +50,8 @@ export const oneDriveCommand = <T>(action: () => Promise<T>): Promise<T> => {
   commandTail = next;
   return next;
 };
-export const stopOneDrive = async () => { await commandTail.catch(() => {}); if (cloud) await (await cloud).stop(); };
+export const stopOneDrive = async (controller: BackupController) => {
+  await commandTail.catch(() => {});
+  const cloud = clouds.get(controller);
+  if (cloud) { await (await cloud).stop(); clouds.delete(controller); }
+};

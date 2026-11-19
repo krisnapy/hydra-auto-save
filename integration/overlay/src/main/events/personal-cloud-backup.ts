@@ -4,7 +4,7 @@ import { dialog, shell } from "electron";
 import { registerEvent } from "./register-event";
 import { assertTrustedEpicSender } from "./epic/assert-trusted-sender";
 import { WindowManager } from "../services/window-manager";
-import { getPersonalBackup, restorePersonalBackup, recoverPersonalBackup } from "../services/personal-cloud-backup";
+import { getPersonalBackup, restorePersonalBackup, recoverPersonalBackup, getProfileRecovery } from "../services/personal-cloud-backup";
 
 import { getOneDrive, oneDriveCommand } from "../services/personal-cloud-backup/onedrive";
 
@@ -21,6 +21,47 @@ registerEvent("personalBackup", async (event, request: unknown) => {
   const parent = WindowManager.mainWindow;
   if (!parent) throw new Error("Jendela utama tidak tersedia.");
   const gameId = typeof input.gameId === "string" ? string(input.gameId) : undefined;
+  if (input.action === "profile-recovery") {
+    const recovery = await getProfileRecovery();
+    if ((input.command === "map" || input.command === "restore") && recovery.snapshot().selection?.gameId !== gameId) throw new Error("Game tujuan berubah. Pilih ulang backup lama.");
+    switch (input.command) {
+      case "snapshot": return recovery.snapshot();
+      case "local": {
+        const result = await dialog.showOpenDialog(parent, { title: "Pilih folder yang berisi HydraPersonalBackup lama", properties: ["openDirectory"] });
+        if (!result.canceled && result.filePaths[0]) return recovery.listLocal(result.filePaths[0]);
+        return recovery.snapshot();
+      }
+      case "onedrive": return recovery.listCloud(await getOneDrive(controller));
+      case "select": return recovery.select(string(input.token), string(gameId));
+      case "map": {
+        const token = string(input.token), rootId = string(input.rootId);
+        const selected = recovery.snapshot().selection;
+        const root = selected?.token === token ? selected.roots.find(r => r.id === rootId) : undefined;
+        if (!root) throw new Error("Pilih ulang backup lama.");
+        let target: string | undefined;
+        if (root.kind === "file") {
+          const result = await dialog.showSaveDialog(parent, { title: "Pilih nama dan lokasi file save pada profil baru" });
+          if (!result.canceled) target = result.filePath;
+        } else {
+          const result = await dialog.showOpenDialog(parent, { title: "Pilih folder save pada profil baru", properties: ["openDirectory", "createDirectory"] });
+          if (!result.canceled) target = result.filePaths[0];
+        }
+        if (target) return recovery.map(token, rootId, target);
+        return recovery.snapshot();
+      }
+      case "restore": {
+        const token = string(input.token);
+        const targets = await recovery.targets(token);
+        const selected = recovery.snapshot().selection!;
+        const confirmation = await dialog.showMessageBox(parent, { type: "warning", title: "Pulihkan dari profil lama?", message: `Pulihkan ${selected.title}, backup ${new Date(selected.createdAt).toLocaleString()} ke ${selected.targetTitle}?`, detail: `${selected.ownership === "legacy" ? "Backup lama belum mencatat pemilik. Dengan melanjutkan, Anda menautkan salinan backup ini ke akun Hydra aktif.\n\n" : "Pemilik backup cocok dengan akun Hydra dan sumber yang aktif.\n\n"}ID game sumber: ${selected.sourceGameId}.\nID game tujuan: ${selected.gameId}.\nPerangkat sumber: ${selected.deviceId}.\nTujuan pada profil baru:\n${targets.map(r => r.path).join("\n")}\n\nPastikan game dan semua tujuan sesuai. Tutup game. Save saat ini dicadangkan sebelum diganti. File tambahan pada lokasi tujuan ikut diganti. Backup sumber tetap disimpan.`, buttons: ["Batal", selected.ownership === "legacy" ? "Tautkan dan pulihkan" : "Pulihkan"], defaultId: 0, cancelId: 0, noLink: true });
+        if (confirmation.response !== 1) return recovery.snapshot();
+        const imported = await recovery.import(token, JSON.stringify(targets), selected.ownership === "legacy");
+        await restorePersonalBackup(imported.gameId, imported.versionId);
+        return { ...recovery.snapshot(), notice: "Save dari profil lama berhasil dipulihkan. Backup sumber tetap tersimpan." };
+      }
+      default: throw new Error("Perintah pemulihan profil tidak valid.");
+    }
+  }
   if (input.action === "cloud") {
     const cloud = await getOneDrive(controller);
     if (input.command === "snapshot") return cloud.snapshot(gameId);

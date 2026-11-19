@@ -3,6 +3,7 @@ import path from 'node:path';
 import { gzip, gunzip } from 'node:zlib';
 import { promisify } from 'node:util';
 import { randomUUID } from 'node:crypto';
+import { accountMatch } from './backup-account.mjs';
 import { digest, safePath, readBackupBlob, portableManifest } from './engine.mjs';
 
 // Keep bounded memory use and leave room for base64 legacy exports/metadata.
@@ -61,12 +62,12 @@ export async function materializeShared(index, fetchObject) {
   return { schema: 1, manifest, blobs };
 }
 
-export async function packVersion(engine, gameId, versionId, { shared = false } = {}) {
+export async function packVersion(engine, gameId, versionId, { shared = false, account } = {}) {
   const local = (await engine.versions(gameId, { fresh: true, versionId }))[0];
   if (!local) throw invalid();
   // Explicit legacy exports remain schema 1. New upload jobs use a binary
   // outbox whose index can reference shared objects on the remote drive.
-  const manifest = portableManifest(local);
+  const manifest = { ...portableManifest(local), ...(account !== undefined ? { account } : {}) };
   const saveBytes = manifest.files.reduce((n, f) => n + f.bytes, 0);
   if (manifest.files.length > 10000 || saveBytes > SAVE_LIMIT) throw new Error(`Save berukuran ${(saveBytes / 1024 ** 2).toFixed(2)} MiB dengan ${manifest.files.length.toLocaleString('id-ID')} file. Batas unggahan: ${SAVE_LIMIT / 1024 ** 2} MiB dan 10.000 file per versi. Periksa apakah lokasi save mencakup folder yang terlalu luas. Backup lokal tetap tersedia.`);
   const blobs = {};
@@ -98,7 +99,7 @@ export async function packVersion(engine, gameId, versionId, { shared = false } 
   return bytes;
 }
 
-export async function validateBundle(engine, gameId, roots, bytes) {
+export async function unpackBundle(bytes) {
   if (!Buffer.isBuffer(bytes) || bytes.length > BUNDLE_LIMIT) throw invalid();
   let value;
   if (bytes.subarray(0, 5).toString() === 'HPB2\n') {
@@ -108,34 +109,46 @@ export async function validateBundle(engine, gameId, roots, bytes) {
     try { value = JSON.parse((await unzip(bytes, { maxOutputLength: BUNDLE_LIMIT })).toString('utf8')); }
     catch { throw invalid(); }
   }
-  return validateValue(engine, gameId, roots, value);
+  return value;
 }
 
-export async function validateValue(engine, gameId, roots, value) {
-  const m = value?.manifest;
-  if (value?.schema !== 1 || !m || m.schema !== 1 || m.compressed !== undefined || m.gameId !== gameId || m.deviceId !== engine.deviceId || !/^[a-zA-Z0-9_-]{1,100}$/.test(m.id) || m.id.startsWith('_') || !Array.isArray(m.files) || !Array.isArray(m.roots) || m.files.length > 10000 || typeof m.createdAt !== 'string' || !Number.isFinite(Date.parse(m.createdAt)) || typeof m.safety !== 'boolean' || !Number.isSafeInteger(m.order) || m.order < 0 || typeof value.blobs !== 'object' || value.blobs === null) throw invalid();
+export async function validateBundle(engine, gameId, roots, bytes) {
+  return validateValue(engine, gameId, roots, await unpackBundle(bytes));
+}
+
+export async function validateManifest(engine, gameId, roots, m, { local = false } = {}) {
+  if (!m || m.schema !== 1 || m.compressed !== undefined || m.gameId !== gameId || m.deviceId !== engine.deviceId || !/^[a-zA-Z0-9_-]{1,100}$/.test(m.id) || m.id.startsWith('_') || !Array.isArray(m.files) || !Array.isArray(m.roots) || (!local && m.files.length > 10000) || typeof m.createdAt !== 'string' || !Number.isFinite(Date.parse(m.createdAt)) || typeof m.safety !== 'boolean' || !Number.isSafeInteger(m.order) || m.order < 0) throw invalid();
   await engine.validate(roots);
-  if (m.roots.length !== roots.length || new Set(m.roots.map(r => r?.id)).size !== roots.length || m.roots.some(r => !r || !roots.some(local => local.id === r.id && local.kind === r.kind) || typeof r.present !== 'boolean')) throw invalid();
+  if (m.roots.length !== roots.length || new Set(m.roots.map(r => r?.id)).size !== roots.length || m.roots.some(r => !r || !roots.some(target => target.id === r.id && target.kind === r.kind) || typeof r.present !== 'boolean')) throw invalid();
   const targets = new Set(); let size = 0;
   for (const entry of m.files) {
     if (!entry || !Number.isSafeInteger(entry.bytes) || entry.bytes < 0 || !/^[a-f0-9]{64}$/.test(entry.hash) || !m.roots.some(r => r.id === entry.rootId && r.present)) throw invalid();
     size += entry.bytes;
     const target = engine.source(roots, entry).toLowerCase();
-    if (targets.has(target) || size > SAVE_LIMIT) throw invalid();
+    if (targets.has(target) || !Number.isSafeInteger(size) || (!local && size > SAVE_LIMIT)) throw invalid();
     targets.add(target);
+  }
+  for (const root of m.roots) if (root.present && root.kind === 'file' && m.files.filter(f => f.rootId === root.id).length !== 1) throw invalid();
+  if (digest(JSON.stringify({ roots: m.roots, files: m.files })) !== m.fingerprint) throw invalid();
+  return m;
+}
+
+export async function validateValue(engine, gameId, roots, value) {
+  if (value?.schema !== 1 || typeof value.blobs !== 'object' || value.blobs === null) throw invalid();
+  const m = await validateManifest(engine, gameId, roots, value.manifest);
+  for (const entry of m.files) {
     const encoded = value.blobs[entry.hash];
     if (typeof encoded !== 'string' || encoded.length > BUNDLE_LIMIT) throw invalid();
     const blob = Buffer.from(encoded, 'base64');
     if (blob.length !== entry.bytes || digest(blob) !== entry.hash) throw invalid();
   }
-  for (const root of m.roots) if (root.present && root.kind === 'file' && m.files.filter(f => f.rootId === root.id).length !== 1) throw invalid();
-  if (digest(JSON.stringify({ roots: m.roots, files: m.files })) !== m.fingerprint) throw invalid();
   return value;
 }
 
 export async function importVersion(engine, gameId, roots, bytes) {
   const value = Buffer.isBuffer(bytes) ? await validateBundle(engine, gameId, roots, bytes) : await validateValue(engine, gameId, roots, bytes);
-  const m = value.manifest;
+  if (engine.account !== undefined && accountMatch(value.manifest.account, engine.account.hydra) !== 'matched') throw new Error('Pemilik backup tidak cocok dengan profil Hydra aktif.');
+  const m = { ...value.manifest, ...(engine.account !== undefined ? { account: engine.account } : {}) };
   const size = [...new Map(m.files.map(f => [f.hash, f])).values()].reduce((n, f) => n + f.bytes, 0);
   const directory = engine.directory(gameId);
   await safePath(directory);
@@ -167,6 +180,7 @@ export async function importVersion(engine, gameId, roots, bytes) {
     const metadata = JSON.stringify(local, null, 2);
     await fs.writeFile(path.join(stage, 'manifest.json'), metadata);
     await fs.writeFile(path.join(stage, 'COMPLETE'), digest(metadata));
+    engine.assertAccount();
     await fs.rename(stage, target);
   } finally { await fs.rm(stage, { recursive: true, force: true }); }
   return m.id;

@@ -10,6 +10,7 @@ export interface BackupProgress {
 }
 export interface RecoveryInfo { journal: string; automatic: boolean; committed: boolean; }
 export interface BackupSnapshot {
+  account?: { hydra: { server: string; userId: string } | null; scope: string };
   notice?: string;
   setup: { completed: boolean; firstBackupAt?: string; games: Array<{ id: string; title: string; configured: boolean }> };
   storage: { availableBytes?: number; totalBytes?: number; warning: boolean; detail: string } | null;
@@ -26,7 +27,10 @@ export interface BackupSnapshot {
   activity: Array<{ at: string; gameId: string; status: string; detail: string }>;
 }
 export class BackupController {
-  constructor(options: { stateDirectory: string; getGames: () => Promise<BackupGame[]>; assertStopped: (gameId: string) => Promise<void>; onError?: (error: unknown) => void; isBackground?: () => boolean; stableMs?: number; pollMs?: number; idlePollMs?: number; debounceMs?: number; fallbackMs?: number });
+  readonly stateDirectory: string;
+  readonly hydraAccount?: { server: string; userId: string } | null;
+  assertAccount(): void;
+  constructor(options: { getAccount?: () => { server: string; userId: string } | null; assertSession?: () => void; stateDirectory: string; getGames: () => Promise<BackupGame[]>; assertStopped: (gameId: string) => Promise<void>; onError?: (error: unknown) => void; isBackground?: () => boolean; stableMs?: number; pollMs?: number; idlePollMs?: number; debounceMs?: number; fallbackMs?: number });
   onBackupCompleted?: (engine: unknown, gameId: string, manifest: unknown) => Promise<void>;
   init(): Promise<this>;
   refreshCatalog(): Promise<void>;

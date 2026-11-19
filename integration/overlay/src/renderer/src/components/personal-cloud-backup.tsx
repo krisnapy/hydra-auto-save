@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { BackupSnapshot, BackupProgress } from "../../../main/services/personal-cloud-backup/core/controller.mjs";
 import "./personal-cloud-backup.scss";
+import { ProfileRecoveryPanel } from "./profile-recovery";
+import type { ProfileRecoverySnapshot } from "../../../main/services/personal-cloud-backup/core/profile-recovery.mjs";
 import { PersonalOneDrive } from "./personal-onedrive";
 import type { CloudSnapshot } from "../../../main/services/personal-cloud-backup/core/cloud-sync.mjs";
 
 declare global {
   interface Window {
     personalBackup: {
+      invoke(request: { action: "profile-recovery"; command: string; gameId?: string; [key: string]: unknown }): Promise<ProfileRecoverySnapshot>;
       invoke(request: { action: "cloud"; command: string; gameId?: string; [key: string]: unknown }): Promise<CloudSnapshot>;
       invoke(request: { action: "progress"; gameId?: string }): Promise<BackupProgress>;
       invoke(request: Record<string, unknown>): Promise<BackupSnapshot>;
@@ -20,6 +23,7 @@ const labels: Record<string, string> = {
 };
 
 const operationLabels: Record<string, string> = {
+  "profile-import": "Menyiapkan backup profil lama",
   "local-optimize-scan": "Memeriksa optimisasi lokal", "local-optimize": "Optimisasi backup lokal", "cloud-optimize-scan": "Memeriksa optimisasi cloud", "cloud-optimize": "Optimisasi backup cloud",
   "cloud-queue": "Menyiapkan unggahan OneDrive", "cloud-download": "Mengunduh versi OneDrive", recover: "Penanganan pemulihan", automatic: "Backup otomatis", backup: "Backup", restore: "Pemulihan", settings: "Pengaturan", manual: "Pengaturan lokasi save", detect: "Deteksi lokasi save", manifest: "Pembaruan database",
 };
@@ -172,6 +176,7 @@ function GameBackupView({ snapshot, busy, opening, error, message, gameId, actio
         <p className="personal-backup__muted">Tutup game terlebih dahulu. Save saat ini akan dicadangkan sebelum diganti. Konfirmasi muncul setelah memilih versi.</p>
         <ul className="personal-backup__versions">{snapshot.versions.map(version => <li key={version.id}><div><strong>{backupDate(version.createdAt)}</strong><p>{version.files} file{version.safety ? " · Backup pengaman" : version.id === latest?.id ? " · Terbaru" : ""}</p></div><button disabled={blocked} onClick={() => void action("restore", { versionId: version.id })} aria-label={`Pulihkan versi ${new Date(version.createdAt).toLocaleString()}${version.safety ? " backup pengaman" : ""}`}>Pilih versi</button></li>)}</ul>
       </div>}
+      <ProfileRecoveryPanel gameId={gameId} disabled={blocked} onRestored={refresh} />
       <PersonalOneDrive gameId={gameId} onDownloaded={refresh} />
       <p className="personal-backup__cloud-note">Backup lokal terpisah dari unggahan OneDrive. Folder sinkronisasi lain tetap dapat digunakan.</p>
     </div>

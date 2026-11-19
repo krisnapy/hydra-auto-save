@@ -1,6 +1,6 @@
 # OneDrive langsung — 0.3.1
 
-Tahap awal untuk OneDrive akun Microsoft pribadi. Folder sinkronisasi lokal lama tetap dapat dipakai tanpa login. Ludusavi tetap digunakan untuk deteksi lokasi save; achievement dan pemulihan antar-PC belum termasuk tahap ini.
+Tahap awal untuk OneDrive akun Microsoft pribadi. Folder sinkronisasi lokal lama tetap dapat dipakai tanpa login. Ludusavi tetap digunakan untuk deteksi lokasi save; achievement belum termasuk tahap ini. Kode kandidat 0.3.9 menambahkan [pemulihan profil lama dengan pemetaan eksplisit](pemulihan-profil-lama.md), belum masuk installer terbit.
 
 ## Pendaftaran sekali oleh pengelola proyek
 
@@ -17,6 +17,8 @@ Rujukan: [pendaftaran aplikasi](https://learn.microsoft.com/en-us/graph/auth-reg
 
 ## Penggunaan
 
+Kode kandidat 0.3.9 mencocokkan [pasangan akun Hydra dan OneDrive](pencocokan-akun.md), memisahkan sesi/antrean per profil dan menahan antrean lama yang belum terikat ke akun. Login Hydra diperlukan sebelum menghubungkan OneDrive. Installer terbit 0.3.8 belum memiliki alur ini.
+
 Pilih folder backup lokal dan lokasi save seperti sebelumnya. Setelah OneDrive terhubung, setiap versi normal baru disalin ke antrean unggahan. Tombol Unggah backup terbaru / coba lagi juga memasukkan versi normal terbaru yang telah ada untuk game ini (atau setiap game pada Settings). Versi pengaman tetap lokal.
 
 Paket cloud ditempatkan pada folder khusus aplikasi di OneDrive/Apps. Nama folder mengikuti pendaftaran Microsoft. Status backup lokal dan status unggahan terpisah. Berhasil mengunggah berarti Microsoft Graph mengembalikan item dengan nama dan ukuran paket sesuai; riwayat lokal saja tidak membuktikan unggahan.
@@ -29,12 +31,12 @@ Lihat versi OneDrive pada halaman game → Unduh ke riwayat → konfirmasi unduh
 
 - Maksimum 128 MiB isi save dan 10.000 file per versi, 192 MiB paket/metadata setelah ekstraksi; format JSON+gzip dengan blob berdasarkan SHA-256. Save lebih besar tetap dibackup lokal, tetapi tidak masuk cloud.
 - Antrean maksimal 512 MiB / 1.000 pekerjaan tertunda. Kegagalan antrean ditampilkan terpisah dan dapat dicoba kembali dari backup lokal terbaru.
-- Hanya versi perangkat yang sama dan konfigurasi root save yang sama yang dapat diunduh/dipulihkan. Jangan hapus profil Hydra bila ingin tetap mengenali identitas perangkat. Pemetaan antar-PC dijadwalkan 0.4.
+- Unduhan biasa tetap memakai perangkat dan konfigurasi root save yang sama. Untuk profil yang sudah hilang atau berbeda, gunakan **Pulihkan dari perangkat/profil lama** pada kode kandidat 0.3.9: pilih sumber dan petakan semua tujuan secara eksplisit. Installer 0.3.8 belum memiliki alur ini.
 - Riwayat cloud belum dipangkas otomatis. Perhatikan kapasitas OneDrive. Paket berisi save tanpa enkripsi ujung-ke-ujung; akun OneDrive mengontrol aksesnya.
 - Token akses/refresh hanya di proses utama, disimpan melalui Electron safeStorage (perlindungan Windows). Tidak masuk renderer, aktivitas, backup game, atau repository. Login gagal tertutup bila perlindungan kredensial tidak tersedia.
 - Pekerjaan diikat ke identitas drive asal. Menyambungkan akun lain tidak mengirim antrean akun sebelumnya. Putuskan koneksi menghapus sesi lokal, tidak menghapus backup dan tidak mencabut persetujuan Microsoft di server.
 - Unduhan memakai URL HTTPS OneDrive yang dikenali tanpa meneruskan bearer token. SHA-256 paket dan setiap blob, metadata, identitas perangkat/game, path Windows, serta root lokal diperiksa sebelum versi dipublikasikan. Paket tidak menentukan path absolut tujuan save.
-- Batas ini mengurangi penggunaan memori tahap awal; unggahan besar/chunked dan migrasi perangkat belum tersedia.
+- Batas ini mengurangi penggunaan memori tahap awal; unggahan besar/chunked dan sinkronisasi konflik antarperangkat belum tersedia.
 
 ## Validasi
 

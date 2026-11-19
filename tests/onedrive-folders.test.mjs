@@ -262,3 +262,22 @@ test('folder creation 400 preserves immutable outbox/local history and retry upl
   assert.equal(cloud.state.jobs.length, 1);
   await assert.rejects(fs.stat(outbox), { code: 'ENOENT' });
 });
+
+test('read-only profile discovery finds old nested and legacy backups without current profile scope', async () => {
+  const f = graphFixture();
+  const oldDevice = randomUUID(), otherDevice = randomUUID();
+  const name = versionName('steam:1', 'old-profile', oldDevice);
+  const second = versionName('steam:2', 'other-profile', otherDevice);
+  await f.provider('steam:1', oldDevice, 'Old Game').upload(name, Buffer.from('old-profile'));
+  await f.provider('steam:2', otherDevice, 'Other Game').upload(second, Buffer.from('other-profile'));
+  const legacy = versionName('steam:3', 'legacy', oldDevice);
+  f.insert('root', legacy, Buffer.from('legacy'));
+  const reader = f.provider('steam:99', randomUUID());
+  const before = f.entries.size;
+  const list = await reader.listProfiles();
+  assert.deepEqual(new Set(list.map(item => item.name)), new Set([name, second, legacy]));
+  assert.equal(list.find(item => item.name === name).title, 'Old Game');
+  assert.equal((await reader.download(name)).toString(), 'old-profile');
+  assert.equal((await reader.download(legacy)).toString(), 'legacy');
+  assert.equal(f.entries.size, before, 'discovery/download never creates source folders');
+});

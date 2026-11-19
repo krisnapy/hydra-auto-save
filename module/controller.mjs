@@ -2,14 +2,18 @@ import * as fs from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { BackupEngine, atomicJson, makeRoots, safePath } from './engine.mjs';
+import { backupAccount, hydraIdentity, sameHydra } from './backup-account.mjs';
 import { SaveMonitor } from './save-monitor.mjs';
 import { Ludusavi } from './ludusavi.mjs';
 import { writeBackupCatalog } from './backup-catalog.mjs';
 import { localPlan, optimizeLocal } from './backup-optimization.mjs';
 
 export class BackupController {
-  constructor({ stateDirectory, getGames, assertStopped, onError = () => {}, isBackground = () => false, stableMs = 1200, pollMs = 5000, idlePollMs = 30000, debounceMs = 1500, fallbackMs = 60000, monitorFactory = callback => new SaveMonitor(callback) }) {
+  constructor({ stateDirectory, getGames, getAccount, assertSession, assertStopped, onError = () => {}, isBackground = () => false, stableMs = 1200, pollMs = 5000, idlePollMs = 30000, debounceMs = 1500, fallbackMs = 60000, monitorFactory = callback => new SaveMonitor(callback) }) {
     Object.assign(this, { stateDirectory, getGames, assertStopped, onError, isBackground, stableMs, pollMs, idlePollMs, debounceMs, fallbackMs });
+    this.getAccount = getAccount;
+    this.assertSession = assertSession;
+    this.hydraAccount = getAccount ? hydraIdentity(getAccount()) : undefined;
     this.dirty = new Map();
     this.lastScan = new Map();
     this.unstableRetries = new Map();
@@ -40,6 +44,10 @@ export class BackupController {
     await this.refreshCatalog();
     return this;
   }
+  assertAccount() {
+    this.assertSession?.();
+    if (this.getAccount && !sameHydra(this.getAccount(), this.hydraAccount)) throw new Error('Profil Hydra berubah. Muat ulang pengaturan backup.');
+  }
   refreshCatalog() {
     if (!this.engine) return Promise.resolve();
     if (this.catalogJob) return this.catalogJob;
@@ -57,7 +65,7 @@ export class BackupController {
     return this.catalogJob;
   }
   rebuild() {
-    this.engine = this.state.destination ? new BackupEngine({ destination: this.state.destination, deviceId: this.state.deviceId, stateDirectory: this.stateDirectory, retention: this.state.retention, stableMs: this.stableMs, assertStopped: this.assertStopped, onStatus: (id, status, detail) => this.setStatus(id, status, detail), onProgress: (id, phase, completed, total) => this.progress(id, phase, completed, total) }) : null;
+    this.engine = this.state.destination ? new BackupEngine({ account: this.getAccount ? backupAccount(this.hydraAccount) : undefined, assertAccount: () => this.assertAccount(), destination: this.state.destination, deviceId: this.state.deviceId, stateDirectory: this.stateDirectory, retention: this.state.retention, stableMs: this.stableMs, assertStopped: this.assertStopped, onStatus: (id, status, detail) => this.setStatus(id, status, detail), onProgress: (id, phase, completed, total) => this.progress(id, phase, completed, total) }) : null;
   }
   setStatus(id, status, detail) {
     this.status.set(id, { status, detail });
@@ -117,7 +125,9 @@ export class BackupController {
       operation.phase = 'preparing';
       operation.updatedAt = new Date().toISOString();
       try {
+        this.assertAccount();
         const result = await action();
+        this.assertAccount();
         this.rememberOperation({ kind, gameId, status: 'complete', at: new Date().toISOString(), detail: kind.endsWith('optimize') ? result?.detail : kind === 'backup' && !result ? 'Isi save tidak berubah; tidak membuat versi baru.' : undefined });
         return result;
       } catch (error) {
@@ -365,6 +375,7 @@ export class BackupController {
     return { operations: [...this.operations.values()].map(item => ({ ...item })), lastOperation: (gameId ? this.gameResults.get(gameId) : this.lastOperation) ? { ...(gameId ? this.gameResults.get(gameId) : this.lastOperation) } : undefined };
   }
   async snapshot(gameId, lightweight = false) {
+    this.assertAccount();
     const game = this.state.games[gameId];
     if (!lightweight || !this.snapshotGames) this.snapshotGames = await this.getGames();
     const games = this.snapshotGames;
@@ -380,6 +391,6 @@ export class BackupController {
       const key = process.platform === 'win32' ? path.normalize(folder).toLowerCase() : path.normalize(folder);
       if (!folders.has(key)) folders.set(key, { rootId: root.id, path: folder });
     }
-    return { setup, storage, recovery, interrupted, ...this.progressSnapshot(gameId), saveFolders: [...folders.values()], enabled: this.state.enabled, destination: this.state.destination, backupDirectory: this.engine && gameId ? this.engine.directory(gameId) : this.state.destination, ludusavi: this.state.ludusavi, retention: this.state.retention, deviceId: this.state.deviceId, status: this.status.get(gameId) ?? { status: game?.roots.length ? 'waiting' : 'setup' }, roots: game?.roots ?? [], versions: versions.map(({ id, createdAt, reason, safety, files }) => ({ id, createdAt, reason, safety, files: files.length })), activity: this.state.activity.filter(item => !gameId || item.gameId === gameId) };
+    return { account: this.getAccount ? { hydra: this.hydraAccount, scope: this.hydraAccount ? 'hydra' : 'guest' } : undefined, setup, storage, recovery, interrupted, ...this.progressSnapshot(gameId), saveFolders: [...folders.values()], enabled: this.state.enabled, destination: this.state.destination, backupDirectory: this.engine && gameId ? this.engine.directory(gameId) : this.state.destination, ludusavi: this.state.ludusavi, retention: this.state.retention, deviceId: this.state.deviceId, status: this.status.get(gameId) ?? { status: game?.roots.length ? 'waiting' : 'setup' }, roots: game?.roots ?? [], versions: versions.map(({ id, createdAt, reason, safety, files }) => ({ id, createdAt, reason, safety, files: files.length })), activity: this.state.activity.filter(item => !gameId || item.gameId === gameId) };
   }
 }

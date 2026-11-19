@@ -118,9 +118,11 @@ export async function makeRoots(selections) {
 }
 
 export class BackupEngine {
-  constructor({ destination, deviceId, stateDirectory, retention = 10, stableMs = 1200, assertStopped, onStatus = () => {}, onProgress = () => {} }) {
+  constructor({ destination, deviceId, stateDirectory, account, assertAccount = () => {}, retention = 10, stableMs = 1200, assertStopped, onStatus = () => {}, onProgress = () => {} }) {
     if (!safeId(deviceId)) throw new Error('Identitas perangkat tidak valid.');
     if (!Number.isInteger(retention) || retention < 1 || retention > 100) throw new Error('Riwayat harus 1–100 versi.');
+    this.account = account;
+    this.assertAccount = assertAccount;
     this.destination = path.resolve(destination);
     this.deviceId = deviceId;
     this.stateDirectory = stateDirectory;
@@ -149,6 +151,7 @@ export class BackupEngine {
   }
 
   async validate(roots) {
+    this.assertAccount();
     if (!roots.length) throw new Error('Perlu pengaturan: belum ada lokasi save.');
     await safePath(this.destination);
     await safePath(this.stateDirectory);
@@ -487,11 +490,12 @@ export class BackupEngine {
       const final = await scan('verifying');
       if (!same(first, final)) throw this.unstableChange('Sumber berubah selama penyalinan; backup akan dicoba lagi setelah stabil.', first, final, roots);
       const order = Math.max(0, ...versions.map(version => version.order ?? 0)) + 1;
-      const manifest = { schema: compressed.length ? 2 : 1, storage: 'adaptive-gzip-v1', ...(compressed.length ? { compressed } : {}), id, gameId, deviceId: this.deviceId, order, createdAt: new Date().toISOString(), reason, safety, fingerprint, ...first };
+      const manifest = { schema: compressed.length ? 2 : 1, storage: 'adaptive-gzip-v1', ...(compressed.length ? { compressed } : {}), id, gameId, deviceId: this.deviceId, order, createdAt: new Date().toISOString(), reason, safety, fingerprint, ...first, ...(this.account !== undefined ? { account: this.account } : {}) };
       report('publishing');
       const bytes = JSON.stringify(manifest, null, 2);
       await fs.writeFile(path.join(temporary, 'manifest.json'), bytes);
       await fs.writeFile(path.join(temporary, 'COMPLETE'), digest(bytes));
+      this.assertAccount();
       await fs.rename(temporary, path.join(directory, id));
       temporary = undefined;
       // Only this device's completed normal versions count toward retention.
@@ -524,6 +528,7 @@ export class BackupEngine {
       if (await exists(journal)) throw new Error(`Pemulihan sebelumnya terputus. Periksa catatan pemulihan: ${journal}`);
       const manifest = (await this.versions(gameId, { fresh: true, versionId })).find(version => version.id === versionId);
       if (!manifest) throw new Error('Versi tidak tersedia, belum lengkap, atau gagal pemeriksaan integritas.');
+      if (this.account !== undefined && JSON.stringify(manifest.account) !== JSON.stringify(this.account)) throw new Error('Backup bukan milik profil Hydra aktif. Gunakan pemulihan profil lama untuk backup yang belum ditautkan.');
       const configured = new Map(roots.map(root => [root.id, root]));
       const recorded = new Map(manifest.roots.map(root => [root.id, root]));
       if (recorded.size !== manifest.roots.length || manifest.roots.some(root => configured.get(root.id)?.kind !== root.kind || typeof root.present !== 'boolean') || roots.some(root => !recorded.has(root.id) && root.kind !== 'file')) throw new Error('Lokasi save berubah sejak backup. Kembalikan pengaturan lokasi yang sesuai.');
@@ -569,10 +574,12 @@ export class BackupEngine {
           await this.assertStopped(gameId);
           await safePath(plan.path);
           if (await exists(plan.path)) {
+            this.assertAccount();
             await fs.rename(plan.path, plan.rollback);
             plan.moved = true;
           }
           if (plan.present) {
+            this.assertAccount();
             await fs.rename(plan.stage, plan.path);
             plan.installed = true;
           }

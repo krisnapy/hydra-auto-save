@@ -133,6 +133,8 @@ export class OneDrive {
     return base;
   }
   async metadata(name) {
+    const known = this.locations.get(name);
+    if (known) return { item: known.item, metadata: await (await this.graph(`${known.item}?$select=name,size,@microsoft.graph.downloadUrl`)).json() };
     const folder = await this.directory(scopePrefix(name));
     if (folder) {
       const item = `${folder}:/${name}`;
@@ -246,6 +248,32 @@ export class OneDrive {
       result.push(item);
       if (this.locations.size > 40000) this.locations.clear();
       this.locations.set(item.name, { item: `${base}:/${item.name}`, eTag: item.eTag });
+    }
+    return result;
+  }
+  // Read-only inventory across profiles. Recognize only our named game/device
+  // folders, with fixed depth; never traverse arbitrary OneDrive directories.
+  async listProfiles() {
+    const root = await this.children(ROOT);
+    const groups = [{ base: ROOT, entries: root, title: 'Backup lama', device: '' }];
+    let folders = 0;
+    for (const game of root) {
+      if (!game.folder || typeof game.name !== 'string' || !/ \[[a-f0-9]{12}\]$/.test(game.name)) continue;
+      if (++folders > 500) throw new Error('Terlalu banyak folder backup. Persempit sumber pemulihan.');
+      for (const device of await this.children(itemBase(game))) {
+        if (!device.folder || typeof device.name !== 'string' || !/ \[[a-f0-9-]{36}\]$/.test(device.name)) continue;
+        if (++folders > 500) throw new Error('Terlalu banyak folder backup. Persempit sumber pemulihan.');
+        groups.push({ base: itemBase(device), entries: await this.children(itemBase(device)), title: game.name.replace(/ \[[a-f0-9]{12}\]$/, ''), device: device.name });
+      }
+    }
+    const result = [], seen = new Set();
+    for (const group of groups) for (const item of group.entries) {
+      if (!storageName(item.name)) continue;
+      if (seen.has(item.name)) throw new Error('File backup ganda ditemukan. Periksa folder aplikasi OneDrive.');
+      seen.add(item.name);
+      if (seen.size > 40000) throw new Error('Terlalu banyak file backup. Persempit sumber pemulihan.');
+      this.locations.set(item.name, { item: `${group.base}:/${item.name}`, eTag: item.eTag });
+      if (cloudName(item.name)) result.push({ ...item, title: group.title, device: group.device });
     }
     return result;
   }

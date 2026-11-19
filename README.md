@@ -1,8 +1,12 @@
-# Hydra Personal Cloud Backup — 0.3.8
+# Hydra Personal Cloud Backup — 0.3.9 (build menunggu verifikasi)
 
 Implementasi awal modul backup untuk salinan kode **Hydra Launcher 4.3.0 di Windows**. Tersedia installer dan aplikasi portable Windows x64 dengan runtime serta Ludusavi bawaan. Build, pemeriksaan tipe seluruh Hydra, dan uji membuka aplikasi/pengaturan backup di Windows telah berhasil. Pengujian game nyata dan penyedia cloud masih diperlukan.
 
 Draft awal tetap tersedia di [docs/rancangan-auto-backup.md](docs/rancangan-auto-backup.md). Keputusan implementasi awal dan batas verifikasi tercatat di [docs/implementasi.md](docs/implementasi.md). Tahapan berikutnya ada di [roadmap Personal Cloud](docs/roadmap-personal-cloud.md).
+
+Prioritas kandidat 0.3.9, **belum masuk installer**: [pencocokan akun Hydra dan OneDrive](docs/pencocokan-akun.md). Backup baru mencatat identitas pemilik; profil, sesi dan antrean dipisahkan per akun Hydra. Pemulihan lintas perangkat memerlukan akun yang cocok, sedangkan backup lama tanpa pemilik ditautkan melalui konfirmasi.
+
+Perubahan kandidat 0.3.9, **belum masuk installer**: [pemulihan dari profil/perangkat lama](docs/pemulihan-profil-lama.md). Backup lokal atau OneDrive dapat dipilih setelah profil Hydra hilang, dipetakan ke lokasi save baru, lalu dipulihkan dengan konfirmasi dan backup pengaman.
 
 Perubahan 0.3.8: unduhan/verifikasi OneDrive mendukung host `my.microsoftpersonalcontent.com` selain domain sebelumnya. Pengalihan ditangani manual maksimal tiga kali, dengan validasi HTTPS/domain pada setiap tujuan dan tanpa bearer token/cookie. Domain yang ditolak ditampilkan hanya sebagai hostname, tanpa path atau tanda tangan URL. 142 tes modul dan pemeriksaan Windows lulus; installer 0.3.8 sudah terbit. Host pada akun pengguna belum diketahui dan pengujian akun nyata belum dilakukan.
 

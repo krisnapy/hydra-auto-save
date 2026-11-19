@@ -204,3 +204,47 @@ test('retensi cloud otomatis mengikuti konfirmasi dan dapat dimatikan', async ({
   await checkbox.click();
   await expect(checkbox).not.toBeChecked();
 });
+
+test('pemulihan profil lama meminta semua tujuan, mendukung batal, dan menyegarkan riwayat', async ({ page }, info) => {
+  const errors = await visit(page, 'unconfigured');
+  const section = panel(page);
+  await section.getByRole('button', { name: 'Pulihkan dari perangkat/profil lama', exact: true }).click();
+  await section.getByRole('button', { name: 'Cari backup di folder lama' }).click();
+  await expect(section.getByText('Game Contoh · Profil sebelum install ulang', { exact: true })).toBeVisible();
+  await section.getByRole('button', { name: 'Pilih backup lama' }).click();
+  const restore = section.getByRole('button', { name: 'Pulihkan versi ini', exact: true });
+  await expect(restore).toBeDisabled();
+  await section.getByRole('button', { name: 'Pilih tujuan lokasi 1', exact: true }).click();
+  await expect(restore).toBeDisabled();
+  await section.getByRole('button', { name: 'Pilih tujuan lokasi 2', exact: true }).click();
+  await expect(restore).toBeEnabled();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await fs.mkdir(screenshots, { recursive: true });
+  const file = path.join(screenshots, `${info.project.name}-old-profile.png`);
+  await page.screenshot({ path: file, fullPage: true, animations: 'disabled' });
+  await info.attach('old-profile', { path: file, contentType: 'image/png' });
+  page.once('dialog', dialog => dialog.dismiss());
+  await restore.click();
+  await expect(restore).toBeVisible();
+  page.once('dialog', dialog => dialog.accept());
+  await restore.click();
+  await expect(section.getByText('Save dari profil lama berhasil dipulihkan. Backup sumber tetap tersimpan.', { exact: true })).toBeVisible();
+  await section.getByRole('button', { name: 'Pulihkan', exact: true }).click();
+  await expect(section.getByRole('button', { name: /^Pulihkan versi/ })).toHaveCount(2);
+  expect(errors).toEqual([]);
+});
+
+test('akun Hydra dan OneDrive ditampilkan sebagai pasangan, login diperlukan dan backup lama ditandai', async ({ page }) => {
+  const errors = await visit(page, 'complete');
+  const cloud = page.getByLabel('OneDrive langsung');
+  await page.evaluate(() => window.visualFixture.setAccount(false, false));
+  await expect(cloud.getByText('Profil Hydra: Belum login', { exact: true })).toBeVisible({ timeout: 8000 });
+  await expect(cloud.getByRole('button', { name: 'Hubungkan OneDrive', exact: true })).toBeDisabled();
+  await page.evaluate(() => window.visualFixture.setAccount(true, true));
+  await expect(cloud.getByText('Akun OneDrive: drive-A', { exact: true })).toBeVisible({ timeout: 8000 });
+  await expect(cloud.getByText('Pasangan akun Hydra dan OneDrive cocok.', { exact: false })).toBeVisible();
+  await panel(page).getByRole('button', { name: 'Pulihkan dari perangkat/profil lama', exact: true }).click();
+  await panel(page).getByRole('button', { name: 'Cari backup akun ini di OneDrive', exact: true }).click();
+  await expect(panel(page).getByText('Akun cocok', { exact: true })).toBeVisible();
+  expect(errors).toEqual([]);
+});

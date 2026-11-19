@@ -31,12 +31,23 @@ switch (scenario) {
   default: throw new Error(`Skenario tidak dikenal: ${scenario}`);
 }
 current.activity = [{ at, gameId, status: current.status.status, detail: current.status.detail ?? "Data contoh untuk pengujian tampilan." }];
-let cloudState = { provider: "onedrive", clientId: "11111111-2222-3333-4444-555555555555", connected: false, autoRetention: false, retention: 10, login: null as null | { userCode: string; expiresAt: number; url: string }, pending: 0, uploaded: 0, uploading: false, error: "", notice: undefined as string | undefined, versions: [] as Array<{ name: string; modifiedAt: string; size: number }> };
+let cloudState = { account: undefined as import("../../module/cloud-sync.mjs").CloudSnapshot["account"], provider: "onedrive", clientId: "11111111-2222-3333-4444-555555555555", connected: false, autoRetention: false, retention: 10, login: null as null | { userCode: string; expiresAt: number; url: string }, pending: 0, uploaded: 0, uploading: false, error: "", notice: undefined as string | undefined, versions: [] as Array<{ name: string; modifiedAt: string; size: number }> };
 const calls: Record<string, unknown>[] = [];
+let profileState: import("../../module/profile-recovery.mjs").ProfileRecoverySnapshot = { sources: [], selection: null };
 const snapshot = () => structuredClone(current);
 const invoke = async (request: Record<string, unknown>) => {
   calls.push(request);
   if (request.gameId !== gameId && !(settingsView && request.gameId === undefined)) throw new Error("UI meminta game di luar fixture.");
+  if (request.action === "profile-recovery") {
+    if (request.command === "local" || request.command === "onedrive") profileState = { selection: null, sources: [{ token: "old-source", title: "Game Contoh · Profil sebelum install ulang", deviceId: "11111111-2222-3333-4444-555555555555", gameId: "custom:old-id", createdAt: at, ownership: cloudState.account?.matched ? "matched" : "legacy", source: request.command === "local" ? "local" : "onedrive" }] };
+    if (request.command === "select") profileState.selection = { token: "selected-source", ownership: cloudState.account?.matched ? "matched" : "legacy", gameId, title: "Game Contoh", targetTitle: "Game Contoh", sourceGameId: "custom:old-id", deviceId: "old-device", createdAt: at, roots: [{ id: "old-folder", kind: "directory", files: 2, samples: ["slot.sav", "settings.json"], target: "" }, { id: "old-file", kind: "file", files: 1, samples: ["."], target: "" }] };
+    if (request.command === "map") profileState.selection!.roots.find(r => r.id === request.rootId)!.target = request.rootId === "old-folder" ? "C:\\Users\\NewPlayer\\Saved Games\\Game Contoh" : "C:\\Users\\NewPlayer\\AppData\\Roaming\\Game Contoh\\profile.sav";
+    if (request.command === "restore" && window.confirm("Simulasi pemulihan profil lama. Tidak ada file asli yang diganti.")) {
+      current.versions = [version("old-profile-imported"), version("safety", true)];
+      profileState.selection = null; profileState.notice = "Save dari profil lama berhasil dipulihkan. Backup sumber tetap tersimpan.";
+    }
+    return structuredClone(profileState);
+  }
   if (request.action === "cloud") {
     if (request.command === "auto-retention") cloudState.autoRetention = request.enabled === true && window.confirm("Aktifkan retensi cloud otomatis?");
     if (request.command === "login") cloudState.login = { userCode: "ABCD-EFGH", expiresAt: Date.now() + 900000, url: "https://www.microsoft.com/link" };
@@ -76,7 +87,7 @@ const invoke = async (request: Record<string, unknown>) => {
   throw new Error(`Aksi fixture tidak didukung: ${request.action}`);
 };
 window.personalBackup = { invoke: invoke as typeof window.personalBackup.invoke };
-Object.assign(window, { visualFixture: { calls, connectCloud: () => { cloudState.connected = true; cloudState.login = null; cloudState.pending = 1; }, completeAutomatic: () => { current.operations = []; current.status = { status: "complete" }; current.versions = [version("automatic")]; current.lastOperation = { kind: "automatic", gameId, status: "complete", at }; }, setProgress: (completed: number) => { current.operations[0].completed = completed; } } });
+Object.assign(window, { visualFixture: { calls, setAccount: (loggedIn: boolean, matched: boolean) => { cloudState.account = { hydra: loggedIn ? { userId: "hydra-user-A", server: "https://hydra.test" } : null, oneDriveDriveId: matched ? "drive-A" : null, matched }; cloudState.connected = matched; }, connectCloud: () => { cloudState.connected = true; cloudState.login = null; cloudState.pending = 1; }, completeAutomatic: () => { current.operations = []; current.status = { status: "complete" }; current.versions = [version("automatic")]; current.lastOperation = { kind: "automatic", gameId, status: "complete", at }; }, setProgress: (completed: number) => { current.operations[0].completed = completed; } } });
 createRoot(document.getElementById("root")!).render(<main className="visual-harness">
   <p className="visual-harness__notice">UJI TAMPILAN · DATA CONTOH · {scenario}</p>
   <h1>Game Contoh</h1>
