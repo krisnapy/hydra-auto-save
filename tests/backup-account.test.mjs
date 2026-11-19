@@ -177,7 +177,7 @@ test('service account routing isolates profiles and credentials and drains old s
   assert.notEqual(one.stateDirectory, two.stateDirectory); assert.equal(one.stopped, true); assert.ok(stoppedClouds.includes(one));
   assert.throws(() => one.options.assertSession(), /Sesi Hydra berubah/);
   context = null; listener(); const guest = await exported.getPersonalBackup();
-  assert.equal(guest.stateDirectory, '/profile-data/personal-cloud-backup');
+  assert.equal(guest.stateDirectory, path.join('/profile-data', 'personal-cloud-backup'));
   context = { userId: A.userId }; listener(); const back = await exported.getPersonalBackup();
   assert.equal(back.stateDirectory, one.stateDirectory); assert.equal(two.stopped, true);
 });
