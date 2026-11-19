@@ -76,3 +76,13 @@ Sumber executable: `1365510346696f650d0c7b5b32826c24add91db3`. [Build installer]
 Pengguna melaporkan alamat unduhan OneDrive tidak dikenali, tetapi domain tidak terlihat. Kode lama menolak my.microsoftpersonalcontent.com; 0.3.8 mendukung host tersebut dan domain penyimpanan sebelumnya. Pengalihan manual dibatasi tiga kali dan setiap tujuan diperiksa (HTTPS, domain, port/kredensial URL), tanpa bearer token/cookie. Pesan penolakan menampilkan hostname aman saja, tanpa path/query/tanda tangan. Ukuran/hash tetap diperiksa. Tujuh regresi baru mencakup host tambahan, rantai relatif/lintas host yang didukung, domain palsu/lokal, tujuan berbahaya/hilang, loop/batas pengalihan, respons terpotong/berlebih/gagal dan fallback Graph content. Ini uji simulasi; host akun pengguna dan keberhasilan unggahan/pemulihan nyata belum dikonfirmasi. Setelah memasang, tekan Unggah backup terbaru / coba lagi tanpa menghapus antrean/backup.
 
 Acuan alur pengalihan dan unduhan tanpa Authorization: [Microsoft Graph download content](https://learn.microsoft.com/en-us/graph/api/driveitem-get-content?view=graph-rest-1.0).
+
+
+## Rilis 0.3.9 — 19 November 2026 WITA
+
+Sumber executable: `cfeb6d0168b453d969ee6fde577ec2b96b20908c`. [Build installer](https://github.com/krisnapy/hydra-auto-save/actions/runs/44548878047), [quick check](https://github.com/krisnapy/hydra-auto-save/actions/runs/44548878070), [verifikasi checksum/startup dan unduhan anonim](https://github.com/krisnapy/hydra-auto-save/actions/runs/44550207179), serta [pengujian tampilan Windows](https://github.com/krisnapy/hydra-auto-save/actions/runs/44550207398) lulus. Sebanyak 167 tes modul dan 40 tes browser lulus; pemeriksaan tipe seluruh Hydra, kompilasi, startup/tray dan halaman game native Windows lulus. [Galeri tampilan](https://github.com/krisnapy/hydra-auto-save/actions/runs/44550207398/artifacts/14541838169) memakai paket dari build tersebut.
+
+[Rilis publik 0.3.9](https://github.com/krisnapy/hydra-auto-save/releases/tag/v0.3.9) menyediakan setup 207.930.167 byte, portable 207.694.107 byte, panduan dan checksum. Setup SHA256: `c88301c781618c9043b149fbeee89e43f0975bbecb5d6343f5c9fcb3e99e13c6`. Keempat aset diperiksa untuk unduhan tanpa login.
+
+Paket mencakup pencocokan server/ID pengguna Hydra dan ID drive OneDrive, pemisahan pengaturan/sesi/antrean per akun, serta pemulihan profil lama dengan pemetaan semua lokasi save. Backup pemilik berbeda ditolak; backup legacy memerlukan penautan eksplisit. Login tidak otomatis menimpa save. Uji memakai fixture dan profil sementara; akun Hydra/OneDrive nyata, save game pengguna serta instalasi interaktif setup belum diuji.
+

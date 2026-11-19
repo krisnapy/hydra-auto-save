@@ -1,6 +1,6 @@
 # Pemulihan dari profil atau perangkat lama
 
-Status: tersedia pada kode kandidat 0.3.9; belum masuk installer yang diterbitkan. Pemulihan tetap dipilih dan dikonfirmasi pengguna, tanpa restore otomatis saat startup.
+Status: tersedia pada installer 0.3.9. Pemulihan tetap dipilih dan dikonfirmasi pengguna, tanpa restore otomatis saat startup.
 
 Login akun Hydra yang sama dan hubungkan OneDrive yang sama agar [identitas pemilik backup cocok](pencocokan-akun.md). Backup tanpa metadata pemilik memerlukan konfirmasi penautan manual.
 
@@ -33,4 +33,4 @@ Jika import selesai tetapi restore gagal, versi impor tetap ada di **Pulihkan** 
 
 Tes lokal mencakup profil lama dan save asli yang sudah dihapus, identitas baru, lokasi baru yang belum ada, game kustom dengan ID berbeda, beberapa root, file tunggal, backup pengaman dan pemulihannya, data rusak, traversal, akun berubah, tujuan berubah, proses game aktif, serta backup lokal di atas 128 MiB. Pengujian Graph simulasi menemukan folder profil lama dan paket datar tanpa membuat folder sumber. Handler IPC diuji untuk pemilih native, pembatalan, konfirmasi dan penerusan ke restore berpengaman.
 
-Tes browser memakai data contoh pada dua ukuran jendela, termasuk pemetaan semua lokasi, pembatalan dan pembaruan riwayat. Pemeriksaan sintaks integrasi, tipe komponen React dan bundle modul utama dilakukan lokal. Build installer Windows, pengujian Electron Windows, login akun OneDrive nyata dan save pengguna belum dijalankan untuk fitur ini.
+Tes browser memakai data contoh pada dua ukuran jendela, termasuk pemetaan semua lokasi, pembatalan dan pembaruan riwayat. Pemeriksaan sintaks integrasi, tipe komponen React dan bundle modul utama dilakukan lokal. Build installer Windows, pemeriksaan tipe seluruh Hydra dan startup/tray Electron Windows lulus. Login akun Hydra/OneDrive nyata dan save pengguna belum diuji.

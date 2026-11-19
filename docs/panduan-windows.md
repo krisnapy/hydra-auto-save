@@ -110,4 +110,4 @@ Pesan penolakan menyertakan hostname bila formatnya aman, tanpa path/query/tanda
 
 ## Restore setelah install ulang Windows
 
-Kode kandidat 0.3.9 menyediakan **Pulihkan dari perangkat/profil lama** di halaman game. Pilih folder backup lama atau akun OneDrive, pilih versi, petakan semua lokasi save ke profil baru, lalu konfirmasi. Backup sumber tetap tersimpan. Profil lama tidak perlu ada. [Panduan lengkap dan batas verifikasi](pemulihan-profil-lama.md). Fitur belum masuk installer terbit.
+Installer 0.3.9 menyediakan **Pulihkan dari perangkat/profil lama** di halaman game. Pilih folder backup lama atau akun OneDrive, pilih versi, petakan semua lokasi save ke profil baru, lalu konfirmasi. Backup sumber tetap tersimpan. Profil lama tidak perlu ada. [Panduan lengkap dan batas verifikasi](pemulihan-profil-lama.md).

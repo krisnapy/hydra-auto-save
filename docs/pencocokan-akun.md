@@ -1,6 +1,6 @@
 # Akun Hydra dan OneDrive sebagai pemilik backup
 
-Status: kode kandidat 0.3.9, belum masuk installer terbit. Sebelumnya backup dipisahkan oleh ID perangkat lokal dan penyimpanan OneDrive, tanpa keterkaitan dengan login Hydra.
+Status: tersedia pada installer 0.3.9. Sebelumnya backup dipisahkan oleh ID perangkat lokal dan penyimpanan OneDrive, tanpa keterkaitan dengan login Hydra.
 
 ## Identitas yang dicocokkan
 
@@ -32,4 +32,4 @@ Antrean lama yang belum memiliki penanda pasangan akun ditahan, tanpa diunggah o
 
 Pemilik diperiksa sebelum pemilihan, import dan restore. Antrean unggahan diikat ke pasangan Hydra–OneDrive, selain pemeriksaan drive asal yang sudah ada. Pergantian akun/sesi membatalkan operasi lama sebelum publikasi atau penggantian save berikutnya. Backup pengaman dan journal pemulihan tetap berlaku.
 
-Tes simulasi memeriksa akun sama setelah reinstall, server/akun berbeda, drive berbeda, pergantian akun dan logout saat operasi, penautan legacy, antrean lama yang ditahan, kepemilikan paket unggahan, serta pemisahan layanan/pengaturan per profil. Akun Hydra dan OneDrive nyata, build installer dan perilaku Electron Windows belum diverifikasi untuk perubahan ini.
+Tes simulasi memeriksa akun sama setelah reinstall, server/akun berbeda, drive berbeda, pergantian akun dan logout saat operasi, penautan legacy, antrean lama yang ditahan, kepemilikan paket unggahan, serta pemisahan layanan/pengaturan per profil. 167 tes modul, build installer, pemeriksaan tipe seluruh Hydra dan startup/tray Electron Windows lulus. Akun Hydra dan OneDrive nyata serta save game pengguna belum diuji.

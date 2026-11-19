@@ -1,5 +1,14 @@
 # Pengujian tampilan halaman game
 
+## Rilis 0.3.9 — 19 November 2026 WITA
+
+Sumber executable: `cfeb6d0168b453d969ee6fde577ec2b96b20908c`. [Build installer](https://github.com/krisnapy/hydra-auto-save/actions/runs/44548878047), [quick check](https://github.com/krisnapy/hydra-auto-save/actions/runs/44548878070), [verifikasi checksum/startup dan unduhan anonim](https://github.com/krisnapy/hydra-auto-save/actions/runs/44550207179), serta [pengujian tampilan Windows](https://github.com/krisnapy/hydra-auto-save/actions/runs/44550207398) lulus. Sebanyak 167 tes modul dan 40 tes browser lulus; pemeriksaan tipe seluruh Hydra, kompilasi, startup/tray dan halaman game native Windows lulus. [Galeri tampilan](https://github.com/krisnapy/hydra-auto-save/actions/runs/44550207398/artifacts/14541838169) memakai paket dari build tersebut.
+
+[Rilis publik 0.3.9](https://github.com/krisnapy/hydra-auto-save/releases/tag/v0.3.9) menyediakan setup 207.930.167 byte, portable 207.694.107 byte, panduan dan checksum. Setup SHA256: `c88301c781618c9043b149fbeee89e43f0975bbecb5d6343f5c9fcb3e99e13c6`. Keempat aset diperiksa untuk unduhan tanpa login.
+
+Paket mencakup pencocokan server/ID pengguna Hydra dan ID drive OneDrive, pemisahan pengaturan/sesi/antrean per akun, serta pemulihan profil lama dengan pemetaan semua lokasi save. Backup pemilik berbeda ditolak; backup legacy memerlukan penautan eksplisit. Login tidak otomatis menimpa save. Uji memakai fixture dan profil sementara; akun Hydra/OneDrive nyata, save game pengguna serta instalasi interaktif setup belum diuji.
+
+
 ## Rilis 0.3.2 — 5 November 2026 — tombol optimisasi
 
 [Rilis publik 0.3.2](https://github.com/krisnapy/hydra-auto-save/releases/tag/v0.3.2) · [build](https://github.com/krisnapy/hydra-auto-save/actions/runs/42030785571) · [verifikasi/publikasi](https://github.com/krisnapy/hydra-auto-save/actions/runs/42031735349) · [uji visual Windows](https://github.com/krisnapy/hydra-auto-save/actions/runs/42031735431) · [galeri](https://github.com/krisnapy/hydra-auto-save/actions/runs/42031735431/artifacts/13415649114). Sumber executable: `8fed514c9cec59e7d5d4856aa85e28060b5158e0`. Empat aset rilis berhasil diperiksa untuk unduhan anonim; rilis sebelumnya tetap tersedia.
