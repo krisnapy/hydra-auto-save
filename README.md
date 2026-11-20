@@ -1,8 +1,10 @@
-# Hydra Personal Cloud Backup — 0.3.12
+# Hydra Personal Cloud Backup — 0.3.13
 
 Implementasi awal modul backup untuk salinan kode **Hydra Launcher 4.3.0 di Windows**. Tersedia installer dan aplikasi portable Windows x64 dengan runtime serta Ludusavi bawaan. Build, pemeriksaan tipe seluruh Hydra, dan uji membuka aplikasi/pengaturan backup di Windows telah berhasil. Pengujian game nyata dan penyedia cloud masih diperlukan.
 
 Draft awal tetap tersedia di [docs/rancangan-auto-backup.md](docs/rancangan-auto-backup.md). Keputusan implementasi awal dan batas verifikasi tercatat di [docs/implementasi.md](docs/implementasi.md). Tahapan berikutnya ada di [roadmap Personal Cloud](docs/roadmap-personal-cloud.md).
+
+Perubahan 0.3.13: pemulihan profil lama melewati entri yang absen pada versi backup dan dapat memakai folder save yang sudah terdeteksi meski nama autosave berbeda. Jika tujuan masih ambigu, Hydra meminta pemilihan lokasi.
 
 Perubahan 0.3.12: pemulihan mendukung backup profil lama dengan lebih dari 100 lokasi save. Daftar tujuan yang panjang dapat dibuka di panel pemulihan.
 

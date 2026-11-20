@@ -155,8 +155,11 @@ export function ProfileRecoveryPanel({ gameId, disabled, onRestored }: { gameId?
           <div><strong>Profil {profile.name}</strong>{targetProfiles.some(other => other !== profile && other.name === profile.name) && <p>{profile.folder}</p>}</div>
           <button disabled={blocked} aria-label={`Pulihkan di sini, profil ${profile.name}`} onClick={() => void command("restore", { token: selection.token, targetProfile: profile.token })}>Pulihkan di sini</button>
         </li>)}</ul> : <>
-        {missingTargets ? <p>Pilih tujuan untuk lokasi yang belum cocok. Jika game baru dipasang, buka {selection.targetTitle}, buat save, lalu tutup game.</p> : <p>Periksa tujuan di bawah, lalu konfirmasi pemulihan.</p>}
-        {missingTargets && <button disabled={blocked} onClick={() => void command("defer", { token: selection.token })}>Pulihkan setelah game ditutup</button>}
+        {missingTargets ? <p>{selection.hasSaveLocations
+          ? "Folder save sudah ditemukan. Pilih tujuan untuk lokasi backup yang belum dapat dicocokkan."
+          : <>Lokasi save belum ditemukan. Buka {selection.targetTitle}, buat save, lalu tutup game, atau pilih tujuan secara manual.</>}</p>
+          : <p>Periksa tujuan di bawah, lalu konfirmasi pemulihan.</p>}
+        {missingTargets && !selection.hasSaveLocations && <button disabled={blocked} onClick={() => void command("defer", { token: selection.token })}>Pulihkan setelah game ditutup</button>}
         {collapseLocations ? <details key={selection.token}>
           <summary>Lihat {selection.roots.length} lokasi save</summary>
           {locations}

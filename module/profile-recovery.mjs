@@ -88,6 +88,7 @@ export class ProfileRecovery {
     )).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     return { profiles, profileToken: this.profileToken, sources,
       selection: this.selection ? { token: this.selection.token, ownership: this.selection.ownership, gameId: this.selection.gameId, title: this.selection.source.title, targetTitle: this.selection.gameTitle, sourceGameId: this.selection.value.manifest.gameId, deviceId: this.selection.source.deviceId, createdAt: this.selection.value.manifest.createdAt,
+        hasSaveLocations: this.selection.hasSaveLocations,
         targetProfiles: this.selection.targetProfiles.map(({ token, name, folder }) => ({ token, name, folder })),
         roots: this.selection.rootSummaries.map(root => ({ ...root, target: this.selection.mapping[root.id] || '' })) } : null };
   }
@@ -251,17 +252,30 @@ export class ProfileRecovery {
     if (value.local) await validateManifest(sourceEngine, m.gameId, virtual, m, { local: true });
     else await validateValue(sourceEngine, m.gameId, virtual, value);
     const config = c.state.games[gameId];
-    const rootSummaries = m.roots.map(root => ({ id: root.id, kind: root.kind, files: 0, samples: [], originalPath: source.locations?.[root.id] || '' }));
+    const activeRoots = m.roots.filter(root => root.present);
+    if (!activeRoots.length) throw new Error('Versi backup ini tidak berisi lokasi save yang dapat dipulihkan. Pilih versi lain.');
+    const rootSummaries = activeRoots.map(root => ({ id: root.id, kind: root.kind, files: 0, samples: [], originalPath: source.locations?.[root.id] || '' }));
     const summariesById = new Map(rootSummaries.map(root => [root.id, root]));
     for (const file of m.files) {
       const summary = summariesById.get(file.rootId);
       summary.files++;
       if (summary.samples.length < 3) summary.samples.push(file.relative);
     }
-    const selection = { token: randomUUID(), gameId, gameTitle: game.title, ownership, source, value: selectionValue(value), rootSummaries, engine: c.engine, config: JSON.stringify(config ?? null) };
+    const selection = { token: randomUUID(), gameId, gameTitle: game.title, ownership, source, value: selectionValue(value), rootSummaries, activeRoots, engine: c.engine, config: JSON.stringify(config ?? null) };
     selection.mapping = await this.detectTargets(selection, config?.roots ?? []);
     selection.targetProfiles = await this.detectTargetProfiles(selection, config?.roots ?? []);
     if (selection.targetProfiles.length === 1) selection.mapping = selection.targetProfiles[0].mapping;
+    selection.hasSaveLocations = false;
+    if (activeRoots.some(root => !selection.mapping[root.id])) {
+      for (const root of config?.roots ?? []) {
+        const folder = root.kind === 'file' ? path.dirname(root.path) : root.path;
+        if ((await fs.lstat(folder).catch(() => null))?.isDirectory()) {
+          selection.hasSaveLocations = true;
+          break;
+        }
+      }
+    }
+
     if (!this.visible(token) || this.sources.get(token) !== source || selection.engine !== c.engine || selection.config !== JSON.stringify(c.state.games[gameId] ?? null)) {
       throw new Error('Pengaturan berubah. Pilih ulang backup lama.');
     }
@@ -269,10 +283,9 @@ export class ProfileRecovery {
     return this.snapshot();
   }
   async detectTargetProfiles(selection, configured) {
-    const manifest = selection.value.manifest;
     const windows = path.win32;
     const pathsById = new Map(configured.map(root => [root.id, root.path]));
-    const sourceFiles = manifest.roots.map(root => ({ ...root, location: selection.source.locations?.[root.id] ?? pathsById.get(root.id) }));
+    const sourceFiles = selection.activeRoots.map(root => ({ ...root, location: selection.source.locations?.[root.id] ?? pathsById.get(root.id) }));
     if (sourceFiles.some(root => root.kind !== 'file' || !root.location)) return [];
     const accountFiles = sourceFiles.filter(root => profileId(windows.basename(windows.dirname(root.location))));
     const sourceFolder = accountFiles[0] && windows.dirname(accountFiles[0].location);
@@ -326,18 +339,38 @@ export class ProfileRecovery {
       candidates.push(root);
       byLocation.set(key, candidates);
     }
-    for (const root of selection.value.manifest.roots) {
+    // Derive file destinations from current save folders, never from the old absolute path.
+    const foldersByLocation = new Map();
+    for (const root of configured) {
+      if (root.kind !== 'file') continue;
+      const folder = path.dirname(root.path);
+      const key = recoveryLocationKey(folder);
+      const folders = foldersByLocation.get(key) ?? new Map();
+      folders.set(process.platform === 'win32' ? folder.toLowerCase() : folder, folder);
+      foldersByLocation.set(key, folders);
+    }
+    for (const root of selection.activeRoots) {
       const original = selection.source.locations?.[root.id];
       const possible = new Set(original ? byLocation.get(`${root.kind}:${recoveryLocationKey(original)}`) : []);
       const exact = byId.get(root.id);
       if (exact?.kind === root.kind) possible.add(exact);
-      if (possible.size !== 1) continue;
+      if (possible.size > 1) continue;
       const [candidate] = possible;
+      let targetPath = candidate?.path;
+      if (!targetPath && original && root.kind === 'file') {
+        const oldFolder = path.win32.dirname(original);
+        const filename = path.win32.basename(original);
+        const folders = foldersByLocation.get(recoveryLocationKey(oldFolder));
+        if (folders?.size === 1 && profileFileName(filename) && path.win32.isAbsolute(original)) {
+          const [folder] = folders.values();
+          targetPath = path.join(folder, filename);
+        }
+      }
+      if (!targetPath) continue;
       try {
-        // Automatic matches need an existing save. Manual recovery can create a missing file.
-        await fs.lstat(candidate.path);
-        const target = await validateTarget(candidate.path, root.kind);
-        await selection.engine.validate([{ ...candidate, path: target }]);
+        if (candidate) await fs.lstat(candidate.path);
+        const target = await validateTarget(targetPath, root.kind);
+        await selection.engine.validate([{ id: root.id, kind: root.kind, path: target }]);
         this.assertTargetProtection(selection, [target]);
         proposals.push({ id: root.id, target });
       } catch {
@@ -364,10 +397,11 @@ export class ProfileRecovery {
   async map(token, rootId, target) {
     const s = this.current(token);
     if (s.targetProfiles.length) throw new Error('Pilih profil save sebagai tujuan pemulihan.');
-    const root = s.value.manifest.roots.find(r => r.id === rootId);
+    const root = s.activeRoots.find(r => r.id === rootId);
     if (!root) throw new Error('Lokasi sumber tidak valid.');
     const resolved = await validateTarget(target, root.kind);
     this.current(token).mapping[rootId] = resolved;
+    s.manualMapping = true;
     return this.snapshot();
   }
   chooseTargetProfile(token, profileToken) {
@@ -387,7 +421,7 @@ export class ProfileRecovery {
   }
   async validateMapping(s, mapping) {
     const roots = [];
-    for (const root of s.value.manifest.roots) {
+    for (const root of s.activeRoots) {
       const target = mapping[root.id];
       if (!target) throw new Error('Pilih tujuan untuk setiap lokasi save.');
       await validateTarget(target, root.kind);
@@ -445,15 +479,16 @@ export class ProfileRecovery {
       const value = await this.sourceValue(s.source);
       if (JSON.stringify(selectionValue(value)) !== JSON.stringify(s.value)) throw new Error('Backup sumber berubah. Pilih ulang versi.');
       const original = value.manifest;
-      const scoped = s.targetProfiles.length > 0;
       const current = c.state.games[s.gameId];
+      const keepFileLocations = !s.manualMapping && current?.roots.every(root => root.kind === 'file') && roots.every(root => root.kind === 'file');
+      const scoped = s.targetProfiles.length > 0 || Boolean(keepFileLocations);
       const configured = scoped ? mergeRoots(current.roots, roots) : roots;
       await c.engine.validate(configured);
-      const map = new Map(original.roots.map((r, i) => [r.id, roots[i].id]));
+      const map = new Map(s.activeRoots.map((r, i) => [r.id, roots[i].id]));
       const manifest = { ...portableManifest(original), id: randomUUID(), deviceId: c.engine.deviceId, gameId: s.gameId, order: Date.now(), reason: 'profile-recovery', scoped,
         origin: { gameId: original.gameId, deviceId: original.deviceId, versionId: original.id, account: original.account ?? null, claimedLegacy: s.ownership === 'legacy' },
         ...(c.engine.account !== undefined ? { account: c.engine.account } : {}),
-        roots: original.roots.map(r => ({ ...r, id: map.get(r.id) })), files: original.files.map(f => ({ ...f, rootId: map.get(f.rootId) })) };
+        roots: s.activeRoots.map(r => ({ ...r, id: map.get(r.id) })), files: original.files.map(f => ({ ...f, rootId: map.get(f.rootId) })) };
       manifest.fingerprint = fingerprint(manifest);
       signal?.throwIfAborted();
       const versionId = value.local ? await this.importLocal(c.engine, roots, manifest, value.local, signal) : await importVersion(c.engine, s.gameId, roots, { ...value, manifest }, { signal });

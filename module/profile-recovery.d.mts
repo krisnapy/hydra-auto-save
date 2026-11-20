@@ -9,7 +9,7 @@ export interface ProfileRecoverySnapshot {
   profiles: Array<{ token: string; deviceId: string; name: string; source: 'local' | 'onedrive'; createdAt: string; gameCount: number }>;
   profileToken?: string;
   sources: Array<{ token: string; ownership?: 'matched' | 'legacy'; title: string; deviceId: string; createdAt: string; gameId: string; source: 'local' | 'onedrive'; restorable: boolean }>;
-  selection: null | { token: string; ownership?: 'matched' | 'legacy'; gameId: string; title: string; targetTitle: string; sourceGameId: string; deviceId: string; createdAt: string; targetProfiles?: Array<{ token: string; name: string; folder: string }>; roots: Array<{ id: string; kind: 'file' | 'directory'; files: number; samples: string[]; originalPath?: string; target: string }> };
+  selection: null | { token: string; ownership?: 'matched' | 'legacy'; gameId: string; title: string; targetTitle: string; sourceGameId: string; deviceId: string; createdAt: string; hasSaveLocations?: boolean; targetProfiles?: Array<{ token: string; name: string; folder: string }>; roots: Array<{ id: string; kind: 'file' | 'directory'; files: number; samples: string[]; originalPath?: string; target: string }> };
 }
 export class ProfileRecovery {
   constructor(controller: BackupController, gameId?: string);

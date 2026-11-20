@@ -55,7 +55,7 @@ const invoke = async (request: Record<string, unknown>) => {
     }
     if (request.command === "details") profileState = { ...profileState, profileToken: "old-profile", sources: [oldSource, { ...oldSource, token: "other-source", gameId: "steam:2", title: "Game lama lain", restorable: false }] };
     if (request.command === "profiles") profileState = { ...profileState, sources: [], selection: null, profileToken: undefined };
-    if (request.command === "select") profileState.selection = { token: "selected-source", ownership: oldSource.ownership, gameId, title: "Game Contoh", targetTitle: "Game Contoh", sourceGameId: gameId, deviceId: "old-device", createdAt: at, roots: scenario === "complete"
+    if (request.command === "select") profileState.selection = { token: "selected-source", ownership: oldSource.ownership, gameId, title: "Game Contoh", targetTitle: "Game Contoh", sourceGameId: gameId, deviceId: "old-device", createdAt: at, hasSaveLocations: current.roots.length > 0, roots: scenario === "complete"
       ? current.roots.map(root => ({ id: root.id, kind: root.kind, files: 1, samples: ["."], target: root.path }))
       : [{ id: "old-folder", kind: "directory", files: 2, samples: ["slot.sav", "settings.json"], target: "" }, { id: "old-file", kind: "file", files: 1, samples: ["."], target: "" }] };
     if (request.command === "select" && new URLSearchParams(location.search).has("target-profiles")) {

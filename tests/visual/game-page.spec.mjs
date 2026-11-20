@@ -252,6 +252,17 @@ test('pemulihan profil lama tetap terlihat dan bisa dibatalkan saat menunggu gam
   expect(errors).toEqual([]);
 });
 
+test('pemulihan profil lama meminta pemetaan tanpa menunggu game jika folder save sudah ditemukan', async ({ page }) => {
+  await visit(page, 'history');
+  const section = panel(page);
+  await section.getByRole('button', { name: 'Pulihkan dari perangkat/profil lama', exact: true }).click();
+  await section.getByRole('button', { name: 'Cari backup di folder lama' }).click();
+  await section.getByRole('button', { name: 'Pilih backup lama' }).click();
+  await expect(section.getByText(/Folder save sudah ditemukan/)).toBeVisible();
+  await expect(section.getByRole('button', { name: 'Pilih tujuan lokasi 1' })).toBeVisible();
+  await expect(section.getByRole('button', { name: 'Pulihkan setelah game ditutup' })).toHaveCount(0);
+});
+
 test('pemulihan profil lama dapat langsung dikonfirmasi jika tujuan sudah cocok', async ({ page }) => {
   await visit(page, 'complete');
   const section = panel(page);

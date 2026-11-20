@@ -229,6 +229,51 @@ for (const [fromCloud, count] of [[false, 993], [true, 101]]) test(`restores a p
   assert.equal(await fs.readFile(extra, 'utf8'), 'new save');
 });
 
+test('local recovery uses the detected save folder for old autosaves and skips absent entries', async t => {
+  const f = await fixture(t);
+  const oldFolder = path.join(f.dir, 'old-user', 'OneDrive', 'Dokumen', 'The Witcher 3', 'gamesaves');
+  const currentFolder = path.join(f.dir, 'new-user', 'Documents', 'The Witcher 3', 'gamesaves');
+  await fs.mkdir(oldFolder, { recursive: true });
+  await fs.mkdir(currentFolder, { recursive: true });
+  const oldSave = path.join(oldFolder, 'AutoSave_old.sav');
+  const oldImage = path.join(oldFolder, 'AutoSave_old.png');
+  const stale = path.join(oldFolder, 'AutoSave_absent.sav');
+  const newSave = path.join(currentFolder, 'AutoSave_new.sav');
+  await fs.writeFile(oldSave, 'old save');
+  await fs.writeFile(oldImage, 'old image');
+  await fs.writeFile(stale, 'removed before backup');
+  await fs.writeFile(newSave, 'current save');
+  const sources = [oldSave, oldImage, stale];
+  const oldRoots = await makeRoots(sources.map(file => ({ path: file })));
+  await fs.unlink(stale);
+  const version = await f.old.backup('steam:1', oldRoots);
+  await fs.writeFile(path.join(f.old.directory('steam:1'), '_INFO GAME.txt'), sources.map(file => `- ${file}`).join('\n'));
+  await fs.rm(oldFolder, { recursive: true });
+  await f.c.manual('steam:1', [{ path: newSave }]);
+
+  const listed = await f.recovery.listLocal(f.destination);
+  const source = listed.sources.find(item => item.createdAt === version.createdAt);
+  const { selection } = await f.recovery.select(source.token);
+  assert.deepEqual(selection.roots.map(root => root.target).sort(),
+    [path.join(currentFolder, 'AutoSave_old.png'), path.join(currentFolder, 'AutoSave_old.sav')]);
+  const targets = await f.recovery.targets(selection.token);
+  await f.recovery.import(selection.token, JSON.stringify(targets), false, { restore: true });
+  assert.equal(await fs.readFile(path.join(currentFolder, 'AutoSave_old.sav'), 'utf8'), 'old save');
+  assert.equal(await fs.readFile(path.join(currentFolder, 'AutoSave_old.png'), 'utf8'), 'old image');
+  assert.equal(await fs.readFile(newSave, 'utf8'), 'current save');
+  await assert.rejects(fs.stat(path.join(currentFolder, 'AutoSave_absent.sav')), { code: 'ENOENT' });
+  assert.ok(f.c.state.games['steam:1'].roots.some(root => root.path === newSave));
+
+  const otherFolder = path.join(f.dir, 'other-library', 'The Witcher 3', 'gamesaves');
+  await fs.mkdir(otherFolder, { recursive: true });
+  const otherSave = path.join(otherFolder, 'AutoSave_other.sav');
+  await fs.writeFile(otherSave, 'other save');
+  await f.c.manual('steam:1', [{ path: newSave }, { path: otherSave }]);
+  const ambiguous = (await f.recovery.select(source.token)).selection;
+  assert.equal(ambiguous.hasSaveLocations, true);
+  assert.ok(ambiguous.roots.every(root => !root.target));
+});
+
 test('old profile recovery identifies missing or invalid save locations', async t => {
   const f = await fixture(t);
   const backup = await unpackBundle(await packVersion(f.old, 'steam:1', f.manifest.id));
