@@ -9,8 +9,9 @@ import { isGameRunning } from "../game-running-state";
 import { logger } from "../logger";
 import { launchedGamePids } from "../launched-game-pids";
 import { ProfileRecovery } from "./core/profile-recovery.mjs";
+import { ProfileRestoreQueue } from "./core/profile-restore-queue.mjs";
 import { BackupController } from "./core/controller.mjs";
-import { withRestoreGate } from "./core/launch-guard.mjs";
+import { onTrackedGameClosed, withRestoreGate } from "./core/launch-guard.mjs";
 import { runWithHydraSaveGuard } from "../epic/cloud-saves";
 import { getOneDrive, stopOneDrive } from "./onedrive";
 import type { Game } from "@types";
@@ -44,7 +45,7 @@ const assertStopped = async (gameId: string) => {
   const game = (await library()).find(item => levelKeys.game(item.shop, item.objectId) === gameId);
   if (!game?.executablePath) throw new Error("Lokasi executable game belum diketahui.");
   if (path.extname(game.executablePath).toLowerCase() !== ".exe") throw new Error("Pemulihan memerlukan executable .exe langsung agar status proses dapat diperiksa.");
-  if (isGameRunning(game.objectId, game.shop) || launchedGamePids.has(gameId)) throw new Error("Tutup game sebelum memulihkan save.");
+  if (isGameRunning(game.objectId, game.shop) || launchedGamePids.has(gameId)) throw Object.assign(new Error("Tutup game sebelum memulihkan save."), { code: "GAME_RUNNING" });
   const scan = await NativeAddon.getSystemProcessMap();
   if (!scan || !scan.processMap) throw new Error("Status proses game belum dapat dipastikan. Pemulihan diblokir.");
   const directories = [game.executablePath, ...(game.trackingExecutablePaths ?? [])].map(file => path.dirname(file).toLowerCase());
@@ -53,7 +54,7 @@ const assertStopped = async (gameId: string) => {
       if (directories.some(directory => {
         const relative = path.relative(directory, file.toLowerCase());
         return !relative || (relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative));
-      })) throw new Error("Masih ada proses di folder game. Tutup game sebelum memulihkan.");
+      })) throw Object.assign(new Error("Masih ada proses di folder game. Tutup game sebelum memulihkan."), { code: "GAME_RUNNING" });
     }
   }
 };
@@ -93,7 +94,7 @@ export const getPersonalBackup = (): Promise<BackupController> => {
   transition = (async () => {
     if (previous) {
       const controller = await previous.catch(() => undefined);
-      if (controller) { await stopOneDrive(controller); await controller.stop(); }
+      if (controller) { await profileRestoreQueues.get(controller)?.stop(); await stopOneDrive(controller); await controller.stop(); }
     }
     const hydra = currentHydra(), revision = authRevision;
     activeKey = `${accountKey(hydra)}:${revision}`;
@@ -108,22 +109,37 @@ export const startPersonalBackup = async () => {
 };
 
 export const stopPersonalBackup = async () => {
-  if (instance) { await (await instance).stop(); await stopOneDrive(await instance); }
+  if (!instance) return;
+  const controller = await instance;
+  await profileRestoreQueues.get(controller)?.stop();
+  await controller.stop();
+  await stopOneDrive(controller);
 };
 
 export const onPersonalBackupGameClosed = (game: Game) => {
   if (process.platform !== "win32" || (game.shop !== "steam" && game.shop !== "custom")) return;
+  const gameId = levelKeys.game(game.shop, game.objectId);
+  onTrackedGameClosed(gameId);
   void (async () => {
     const controller = await getPersonalBackup();
-    if ((await controller.snapshot()).enabled) await controller.backup(levelKeys.game(game.shop, game.objectId), "game-closed");
+    await profileRestoreQueues.get(controller)?.gameClosed(gameId);
+    if ((await controller.snapshot()).enabled) await controller.backup(gameId, "game-closed");
   })().catch(error => logger.warn("[Personal Backup] Backup setelah game ditutup:", error));
 };
 
 export const restorePersonalBackup = (gameId: string, versionId: string) =>
   withRestoreGate(gameId, () => runWithHydraSaveGuard(async () => (await getPersonalBackup()).restore(gameId, versionId, true)));
 
-export const restoreOldProfileBackup = (recovery: ProfileRecovery, gameId: string, token: string, targets: string, claimLegacy: boolean) =>
-  withRestoreGate(gameId, () => runWithHydraSaveGuard(() => recovery.import(token, targets, claimLegacy, { restore: true })));
+const profileRestoreQueues = new WeakMap<BackupController, ProfileRestoreQueue>();
+export const getProfileRestoreQueue = (controller: BackupController) => {
+  let queue = profileRestoreQueues.get(controller);
+  if (!queue) {
+    queue = new ProfileRestoreQueue(controller, assertStopped, (job, controls) => withRestoreGate(job.gameId,
+      () => runWithHydraSaveGuard(() => job.recovery.import(job.token, job.confirmedTargets, job.claimLegacy, { ...controls, restore: true }))));
+    profileRestoreQueues.set(controller, queue);
+  }
+  return queue;
+};
 
 export const recoverPersonalBackup = (gameId: string) =>
   withRestoreGate(gameId, () => runWithHydraSaveGuard(async () => (await getPersonalBackup()).recover(gameId)));

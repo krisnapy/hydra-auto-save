@@ -212,6 +212,7 @@ test('pemulihan profil lama meminta semua tujuan, mendukung batal, dan menyegark
   await section.getByRole('button', { name: 'Cari backup di folder lama' }).click();
   await expect(section.getByText('Game Contoh · Profil sebelum install ulang', { exact: true })).toBeVisible();
   await section.getByRole('button', { name: 'Pilih backup lama' }).click();
+  await expect(section.getByText(/buat save, lalu tutup game/)).toBeVisible();
   const restore = section.getByRole('button', { name: 'Pulihkan versi ini', exact: true });
   await expect(restore).toBeDisabled();
   await section.getByRole('button', { name: 'Pilih tujuan lokasi 1', exact: true }).click();
@@ -232,6 +233,56 @@ test('pemulihan profil lama meminta semua tujuan, mendukung batal, dan menyegark
   await section.getByRole('button', { name: 'Pulihkan', exact: true }).click();
   await expect(section.getByRole('button', { name: /^Pulihkan versi/ })).toHaveCount(2);
   expect(errors).toEqual([]);
+});
+
+test('pemulihan profil lama tetap terlihat dan bisa dibatalkan saat menunggu game ditutup', async ({ page }) => {
+  const errors = await visit(page, 'unconfigured');
+  const section = panel(page);
+  const disclosure = section.getByRole('button', { name: 'Pulihkan dari perangkat/profil lama', exact: true });
+  await disclosure.click();
+  await section.getByRole('button', { name: 'Cari backup di folder lama' }).click();
+  await section.getByRole('button', { name: 'Pilih backup lama' }).click();
+  page.once('dialog', dialog => dialog.accept());
+  await section.getByRole('button', { name: 'Pulihkan setelah game ditutup' }).click();
+  await expect(section.getByRole('status').filter({ hasText: 'Buka game, buat save jika belum ada, lalu tutup game.' })).toBeVisible();
+  await disclosure.click();
+  await section.getByRole('button', { name: 'Batalkan pemulihan' }).click();
+  await expect(section.getByText('Pemulihan dibatalkan.', { exact: true })).toBeVisible();
+  await expect(section.getByRole('button', { name: 'Batalkan pemulihan' })).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
+test('pemulihan profil lama dapat langsung dikonfirmasi jika tujuan sudah cocok', async ({ page }) => {
+  await visit(page, 'complete');
+  const section = panel(page);
+  await section.getByRole('button', { name: 'Pulihkan dari perangkat/profil lama', exact: true }).click();
+  await section.getByRole('button', { name: 'Cari backup di folder lama' }).click();
+  await section.getByRole('button', { name: 'Pilih backup lama' }).click();
+  await expect(section.getByRole('button', { name: 'Ubah tujuan lokasi 1', exact: true })).toBeVisible();
+  const restore = section.getByRole('button', { name: 'Pulihkan versi ini', exact: true });
+  await expect(restore).toBeEnabled();
+  page.once('dialog', dialog => dialog.accept());
+  await restore.click();
+  await expect(section.getByText('Save dari profil lama berhasil dipulihkan. Backup sumber tetap tersimpan.')).toBeVisible();
+});
+
+test('pemulihan profil lama menampilkan tombol di kanan setiap profil tujuan', async ({ page }) => {
+  await page.goto('/?scenario=complete&target-profiles');
+  const section = panel(page);
+  await section.getByRole('button', { name: 'Pulihkan dari perangkat/profil lama', exact: true }).click();
+  await section.getByRole('button', { name: 'Cari backup di folder lama' }).click();
+  await section.getByRole('button', { name: 'Pilih backup lama' }).click();
+  const group = section.getByRole('group', { name: 'Tujuan pemulihan profil baru' });
+  await expect(group.getByRole('button', { name: /^Pulihkan di sini/ })).toHaveCount(2);
+  await expect(group.getByRole('button', { name: /Ubah tujuan|Pilih tujuan/ })).toHaveCount(0);
+  const second = group.getByRole('button', { name: 'Pulihkan di sini, profil 300' });
+  const title = group.getByText('Profil 300', { exact: true });
+  expect((await second.boundingBox()).x).toBeGreaterThan((await title.boundingBox()).x);
+  page.once('dialog', dialog => dialog.accept());
+  await second.click();
+  await expect(section.getByText('Save dari profil lama berhasil dipulihkan. Backup sumber tetap tersimpan.')).toBeVisible();
+  const calls = await page.evaluate(() => window.visualFixture.calls);
+  expect(calls).toContainEqual(expect.objectContaining({ command: 'restore', targetProfile: 'target-300' }));
 });
 
 test('akun Hydra dan OneDrive ditampilkan sebagai pasangan, login diperlukan dan backup lama ditandai', async ({ page }) => {

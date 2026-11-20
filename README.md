@@ -1,10 +1,12 @@
-# Hydra Personal Cloud Backup — 0.3.10
+# Hydra Personal Cloud Backup — 0.3.11
 
 Implementasi awal modul backup untuk salinan kode **Hydra Launcher 4.3.0 di Windows**. Tersedia installer dan aplikasi portable Windows x64 dengan runtime serta Ludusavi bawaan. Build, pemeriksaan tipe seluruh Hydra, dan uji membuka aplikasi/pengaturan backup di Windows telah berhasil. Pengujian game nyata dan penyedia cloud masih diperlukan.
 
 Draft awal tetap tersedia di [docs/rancangan-auto-backup.md](docs/rancangan-auto-backup.md). Keputusan implementasi awal dan batas verifikasi tercatat di [docs/implementasi.md](docs/implementasi.md). Tahapan berikutnya ada di [roadmap Personal Cloud](docs/roadmap-personal-cloud.md).
 
-Perubahan 0.3.10: pencarian backup di halaman game hanya menampilkan game aktif. Settings menampilkan profil lama terlebih dahulu dan menyediakan pemulihan per game dari detail profil. Restore mempertahankan slot tambahan dan melindungi lokasi save game lain. [Panduan pemulihan profil](docs/pemulihan-profil-lama.md).
+Perubahan 0.3.11: pemulihan profil lama dapat diantrekan sebelum save pertama tersedia. Hydra memeriksa tujuan saat game ditutup, memakai satu profil yang cocok secara otomatis, atau meminta pilihan jika ada beberapa profil. Pemulihan dapat dibatalkan sebelum save mulai diganti. [Panduan pemulihan profil](docs/pemulihan-profil-lama.md).
+
+Perubahan 0.3.10: pencarian backup di halaman game hanya menampilkan game aktif. Settings menampilkan profil lama terlebih dahulu dan menyediakan pemulihan per game dari detail profil. Restore mempertahankan slot tambahan dan melindungi lokasi save game lain.
 
 Prioritas 0.3.9: [pencocokan akun Hydra dan OneDrive](docs/pencocokan-akun.md). Backup baru mencatat identitas pemilik; profil, sesi dan antrean dipisahkan per akun Hydra. Pemulihan lintas perangkat memerlukan akun yang cocok, sedangkan backup lama tanpa pemilik ditautkan melalui konfirmasi.
 

@@ -371,7 +371,7 @@ export class BackupEngine {
       if (!summary?.automatic) throw new Error('Catatan pemulihan lama atau rusak memerlukan pemeriksaan manual. Buka folder catatan pemulihan dan jangan hapus file pengaman.');
       const journal = this.journal(gameId);
       const value = await json(journal);
-      if (value.schema !== 2 || value.gameId !== gameId || typeof value.committed !== 'boolean' || !Array.isArray(value.plans) || value.plans.length !== roots.length || !/^[a-f0-9]{64}$/.test(value.safetyFingerprint) || !/^[a-f0-9]{64}$/.test(value.targetFingerprint)) throw new Error('Catatan pemulihan tidak valid.');
+      if (value.schema !== 2 || value.gameId !== gameId || typeof value.committed !== 'boolean' || !Array.isArray(value.plans) || !value.plans.length || (value.scoped !== true && value.plans.length !== roots.length) || !/^[a-f0-9]{64}$/.test(value.safetyFingerprint) || !/^[a-f0-9]{64}$/.test(value.targetFingerprint)) throw new Error('Catatan pemulihan tidak valid.');
       const ids = new Set();
       for (const plan of value.plans) {
         const root = roots.find(root => root.id === plan.id);
@@ -383,6 +383,12 @@ export class BackupEngine {
           if (typeof plan[key] !== 'string' || !plan[key].startsWith(prefix) || !/^[a-f0-9-]{36}$/.test(plan[key].slice(prefix.length))) throw new Error('Path catatan pemulihan tidak aman.');
           await safePath(plan[key]);
         }
+      }
+      if (value.scoped === true) {
+        if (!safeId(value.safety)) throw new Error('Backup pengaman pemulihan tidak valid.');
+        const [safety] = await this.versions(gameId, { fresh: true, versionId: value.safety, skipRepair: true });
+        if (!safety?.safety || safety.scoped !== true || safety.fingerprint !== value.safetyFingerprint ||
+          safety.roots.length !== ids.size || safety.roots.some(root => !ids.has(root.id))) throw new Error('Backup pengaman pemulihan tidak sesuai catatan.');
       }
       if (!value.committed) {
         for (const plan of [...value.plans].reverse()) {
@@ -401,7 +407,7 @@ export class BackupEngine {
       }
       // Only clear the block after content matches the recorded complete state.
       await this.assertStopped(gameId);
-      const current = digest(JSON.stringify(await this.scan(roots)));
+      const current = digest(JSON.stringify(await this.scan(roots.filter(root => ids.has(root.id)))));
       if (current !== (value.committed ? value.targetFingerprint : value.safetyFingerprint)) throw new Error('Isi save belum sesuai kondisi pemulihan. Catatan dan file pengaman dipertahankan untuk pemeriksaan manual.');
       await fs.rm(journal);
       this.onStatus(gameId, 'restored', value.committed ? 'Pemulihan sebelumnya sudah lengkap; pemeriksaan selesai.' : 'Kondisi sebelum pemulihan dikembalikan. File yang dipindahkan disimpan di samping lokasi save dengan nama hydra-interrupted.');
@@ -412,7 +418,7 @@ export class BackupEngine {
     return this.exclusive(gameId, () => this.capture(gameId, roots, options));
   }
 
-  async capture(gameId, roots, { reason = 'manual', safety = false } = {}) {
+  async capture(gameId, roots, { reason = 'manual', safety = false, scoped = false } = {}) {
     await this.repairOptimizations(gameId);
     await this.assertNoRecovery(gameId);
     this.onStatus(gameId, 'preparing');
@@ -490,7 +496,7 @@ export class BackupEngine {
       const final = await scan('verifying');
       if (!same(first, final)) throw this.unstableChange('Sumber berubah selama penyalinan; backup akan dicoba lagi setelah stabil.', first, final, roots);
       const order = Math.max(0, ...versions.map(version => version.order ?? 0)) + 1;
-      const manifest = { schema: compressed.length ? 2 : 1, storage: 'adaptive-gzip-v1', ...(compressed.length ? { compressed } : {}), id, gameId, deviceId: this.deviceId, order, createdAt: new Date().toISOString(), reason, safety, fingerprint, ...first, ...(this.account !== undefined ? { account: this.account } : {}) };
+      const manifest = { schema: compressed.length ? 2 : 1, storage: 'adaptive-gzip-v1', ...(compressed.length ? { compressed } : {}), id, gameId, deviceId: this.deviceId, order, createdAt: new Date().toISOString(), reason, safety, ...(scoped ? { scoped: true } : {}), fingerprint, ...first, ...(this.account !== undefined ? { account: this.account } : {}) };
       report('publishing');
       const bytes = JSON.stringify(manifest, null, 2);
       await fs.writeFile(path.join(temporary, 'manifest.json'), bytes);
@@ -517,20 +523,23 @@ export class BackupEngine {
     }
   }
 
-  restore(gameId, roots, versionId, confirmed) {
+  restore(gameId, configuredRoots, versionId, confirmed, { signal, onCommit } = {}) {
     return this.exclusive(gameId, async () => {
+      signal?.throwIfAborted();
       if (confirmed !== true) throw new Error('Pemulihan memerlukan konfirmasi.');
       await this.repairOptimizations(gameId);
       this.onProgress(gameId, 'checking-restore');
-      await this.validate(roots);
+      await this.validate(configuredRoots);
       await this.assertStopped(gameId);
       const journal = path.join(this.stateDirectory, `${digest(gameId)}-restore.json`);
       if (await exists(journal)) throw new Error(`Pemulihan sebelumnya terputus. Periksa catatan pemulihan: ${journal}`);
       const manifest = (await this.versions(gameId, { fresh: true, versionId })).find(version => version.id === versionId);
       if (!manifest) throw new Error('Versi tidak tersedia, belum lengkap, atau gagal pemeriksaan integritas.');
       if (this.account !== undefined && JSON.stringify(manifest.account) !== JSON.stringify(this.account)) throw new Error('Backup bukan milik profil Hydra aktif. Gunakan pemulihan profil lama untuk backup yang belum ditautkan.');
-      const configured = new Map(roots.map(root => [root.id, root]));
       const recorded = new Map(manifest.roots.map(root => [root.id, root]));
+      const scoped = manifest.scoped === true && (manifest.reason === 'profile-recovery' || manifest.safety);
+      const roots = scoped ? configuredRoots.filter(root => recorded.has(root.id)) : configuredRoots;
+      const configured = new Map(roots.map(root => [root.id, root]));
       if (recorded.size !== manifest.roots.length || manifest.roots.some(root => configured.get(root.id)?.kind !== root.kind || typeof root.present !== 'boolean') || roots.some(root => !recorded.has(root.id) && root.kind !== 'file')) throw new Error('Lokasi save berubah sejak backup. Kembalikan pengaturan lokasi yang sesuai.');
       const unique = new Set();
       for (const entry of manifest.files) {
@@ -540,7 +549,8 @@ export class BackupEngine {
         if (!manifest.roots.find(root => root.id === entry.rootId)?.present) throw new Error('Metadata lokasi tidak konsisten.');
       }
       // Fail before writing live data if the safety backup cannot complete.
-      const safety = await this.capture(gameId, roots, { reason: 'before-restore', safety: true });
+      const safety = await this.capture(gameId, roots, { reason: 'before-restore', safety: true, scoped });
+      signal?.throwIfAborted();
       const preserveNewFiles = manifest.reason === 'profile-recovery';
       const key = file => {
         const relative = process.platform === 'win32' ? file.relative.toLowerCase() : file.relative;
@@ -562,7 +572,7 @@ export class BackupEngine {
           present: Boolean(recorded.get(root.id)?.present || (preserveNewFiles && originalPresent)) };
       });
       let targetFingerprint = manifest.fingerprint;
-      const writeJournal = (committed = false) => atomicJson(journal, { schema: 2, gameId, committed, safety: safety.id, safetyFingerprint: safety.fingerprint, targetFingerprint, plans });
+      const writeJournal = (committed = false) => atomicJson(journal, { schema: 2, gameId, committed, ...(scoped ? { scoped: true } : {}), safety: safety.id, safetyFingerprint: safety.fingerprint, targetFingerprint, plans });
       let journalWritten = false, committed = false;
       let staged = 0;
       this.onProgress(gameId, 'restore-staging', 0, files.length);
@@ -574,11 +584,12 @@ export class BackupEngine {
           await fs.mkdir(path.dirname(plan.stage), { recursive: true });
           if (plan.present && plan.kind === 'directory') await fs.mkdir(plan.stage);
           for (const { entry, version } of group) {
+            signal?.throwIfAborted();
             const target = plan.kind === 'file' ? plan.stage : path.join(plan.stage, ...entry.relative.split('/'));
             await fs.mkdir(path.dirname(target), { recursive: true });
             const blob = path.join(this.directory(gameId), version.id, 'data', entry.hash);
             await safePath(blob);
-            await pipeline(createReadStream(blob), ...(version.compressed?.includes(entry.hash) ? [createGunzip()] : []), checkedBytes(entry), createWriteStream(target, { flags: 'wx' }));
+            await pipeline(createReadStream(blob), ...(version.compressed?.includes(entry.hash) ? [createGunzip()] : []), checkedBytes(entry), createWriteStream(target, { flags: 'wx' }), { signal });
             this.onProgress(gameId, 'restore-staging', ++staged, files.length);
           }
           if (plan.present && plan.kind === 'file' && !await exists(plan.stage)) throw new Error('Isi file backup tidak lengkap.');
@@ -594,6 +605,8 @@ export class BackupEngine {
         if (digest(JSON.stringify(before)) !== safety.fingerprint) throw new Error('Save berubah setelah backup pengaman. Pemulihan dibatalkan.');
         await writeJournal();
         journalWritten = true;
+        signal?.throwIfAborted();
+        onCommit?.();
         let replaced = 0;
         this.onProgress(gameId, 'restore-replacing', 0, plans.length);
         for (const plan of plans) {
@@ -632,7 +645,7 @@ export class BackupEngine {
             throw new Error(`${error.message}; rollback gagal: ${rollbackError.message}. Backup pengaman: ${safety.id}; catatan: ${journal}`);
           }
         }
-        this.onStatus(gameId, 'failed', error.message);
+        if (error.name !== 'AbortError') this.onStatus(gameId, 'failed', error.message);
         throw error;
       } finally {
         for (const plan of plans) await fs.rm(plan.stage, { recursive: true, force: true });

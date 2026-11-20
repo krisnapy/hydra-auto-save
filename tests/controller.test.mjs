@@ -4,7 +4,7 @@ import * as fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { BackupController } from '../module/controller.mjs';
-import { withLaunchGate, withRestoreGate } from '../module/launch-guard.mjs';
+import { onTrackedGameClosed, withLaunchGate, withRestoreGate } from '../module/launch-guard.mjs';
 
 test('poll otomatis, manual, penyimpanan status dan restart perangkat', async t => {
   const root = await fs.mkdtemp(path.join(await fs.realpath(os.tmpdir()), 'hydra-controller-'));
@@ -40,6 +40,8 @@ test('peluncuran dan pemulihan saling mengunci termasuk masa tunggu deteksi pros
   resolve(); await pending;
   await withLaunchGate('game-a', async () => {});
   await assert.rejects(withRestoreGate('game-a', async () => {}), /sedang dibuka/);
+  onTrackedGameClosed('game-a');
+  assert.equal(await withRestoreGate('game-a', async () => 'dipulihkan'), 'dipulihkan');
 });
 
 test('deteksi gagal ditampilkan sebagai perlu pengaturan', async t => {

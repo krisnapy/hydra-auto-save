@@ -3,13 +3,15 @@ import type { BackupSnapshot, BackupProgress } from "../../../main/services/pers
 import "./personal-cloud-backup.scss";
 import { ProfileRecoveryPanel } from "./profile-recovery";
 import type { ProfileRecoverySnapshot } from "../../../main/services/personal-cloud-backup/core/profile-recovery.mjs";
+import type { ProfileRestoreStatus } from "../../../main/services/personal-cloud-backup/core/profile-restore-queue.mjs";
 import { PersonalOneDrive } from "./personal-onedrive";
 import type { CloudSnapshot } from "../../../main/services/personal-cloud-backup/core/cloud-sync.mjs";
 
 declare global {
   interface Window {
     personalBackup: {
-      invoke(request: { action: "profile-recovery"; command: string; gameId?: string; [key: string]: unknown }): Promise<ProfileRecoverySnapshot>;
+      invoke(request: { action: "profile-recovery"; command: "pending"; gameId?: string }): Promise<ProfileRestoreStatus[]>;
+      invoke(request: { action: "profile-recovery"; command: string; gameId?: string; [key: string]: unknown }): Promise<ProfileRecoverySnapshot | ProfileRestoreStatus[]>;
       invoke(request: { action: "cloud"; command: string; gameId?: string; [key: string]: unknown }): Promise<CloudSnapshot>;
       invoke(request: { action: "progress"; gameId?: string }): Promise<BackupProgress>;
       invoke(request: Record<string, unknown>): Promise<BackupSnapshot>;

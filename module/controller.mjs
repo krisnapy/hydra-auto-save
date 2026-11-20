@@ -131,7 +131,7 @@ export class BackupController {
         this.rememberOperation({ kind, gameId, status: 'complete', at: new Date().toISOString(), detail: kind.endsWith('optimize') ? result?.detail : kind === 'backup' && !result ? 'Isi save tidak berubah; tidak membuat versi baru.' : undefined });
         return result;
       } catch (error) {
-        this.rememberOperation({ kind, gameId, status: 'failed', at: new Date().toISOString(), detail: error.message });
+        if (error.name !== 'AbortError') this.rememberOperation({ kind, gameId, status: 'failed', at: new Date().toISOString(), detail: error.message });
         throw error;
       } finally {
         this.operations.delete(operation.id);
@@ -269,11 +269,11 @@ export class BackupController {
   restore(gameId, versionId, confirmed) {
     return this.control(() => this.restoreInternal(gameId, versionId, confirmed), 'restore', gameId);
   }
-  async restoreInternal(gameId, versionId, confirmed) {
+  async restoreInternal(gameId, versionId, confirmed, options) {
     if (!this.engine) throw new Error('Pilih folder backup terlebih dahulu.');
     if (!this.state.games[gameId]) throw new Error('Perlu pengaturan lokasi save.');
-    try { return await this.engine.restore(gameId, this.state.games[gameId].roots, versionId, confirmed); }
-    catch (error) { this.setStatus(gameId, 'failed', error.message); throw error; }
+    try { return await this.engine.restore(gameId, this.state.games[gameId].roots, versionId, confirmed, options); }
+    catch (error) { if (error.name !== 'AbortError') this.setStatus(gameId, 'failed', error.message); throw error; }
     finally { await this.save(); }
   }
   recover(gameId) {

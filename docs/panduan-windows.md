@@ -110,4 +110,4 @@ Pesan penolakan menyertakan hostname bila formatnya aman, tanpa path/query/tanda
 
 ## Restore setelah install ulang Windows
 
-Buka **Pulihkan dari perangkat/profil lama** di halaman game atau **Settings → Personal Cloud Backup**. Halaman game hanya menampilkan backup game aktif. Di Settings, pilih sumber lokal atau OneDrive, lalu buka detail profil. Pilih game dengan ID yang sama, pilih versi, petakan lokasi save, dan konfirmasi. File tambahan dan backup sumber tetap tersimpan. [Panduan lengkap dan batas verifikasi](pemulihan-profil-lama.md).
+Buka **Pulihkan dari perangkat/profil lama** di halaman game atau **Settings → Personal Cloud Backup**. Pilih backup untuk game dengan ID yang sama. Jika lokasi save belum tersedia, pilih **Pulihkan setelah game ditutup**, lalu buka game, buat save pertama, dan tutup game. Jika Hydra menemukan beberapa profil tujuan, pilih **Pulihkan di sini** di samping profil yang sesuai. Antrean tetap aktif saat Hydra berada di tray dan dapat dibatalkan sebelum save mulai diganti. File tambahan dan backup sumber tetap tersimpan. [Panduan lengkap dan batas verifikasi](pemulihan-profil-lama.md).

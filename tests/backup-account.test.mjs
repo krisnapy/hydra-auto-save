@@ -59,6 +59,7 @@ test('local backups carry Hydra identity, matching survives reinstall, and anoth
   assert.equal(list.sources.length, 1); assert.equal(list.sources[0].ownership, 'matched');
   const selected = (await recovery.select(list.sources[0].token)).selection;
   const target = path.join(f.directory, 'fresh-save');
+  await fs.mkdir(target);
   await recovery.map(selected.token, selected.roots[0].id, target);
   const imported = await recovery.import(selected.token, JSON.stringify(await recovery.targets(selected.token)));
   await fresh.restore(imported.gameId, imported.versionId, true);
@@ -85,6 +86,7 @@ test('matching OneDrive backups require both Hydra identity and drive, even acro
   assert.equal((await new ProfileRecovery(wrong, 'steam:1').listCloud(wrongSync)).sources.length, 1, 'B sees only B ownership, despite same OneDrive');
   const selected = (await recovery.select(list.sources[0].token)).selection;
   const target = path.join(f.directory, 'restored-cloud');
+  await fs.mkdir(target);
   await recovery.map(selected.token, selected.roots[0].id, target);
   const imported = await recovery.import(selected.token, JSON.stringify(await recovery.targets(selected.token)));
   await fresh.restore(imported.gameId, imported.versionId, true);
@@ -100,7 +102,9 @@ test('legacy backups need explicit claim; claim copies ownership without changin
   const fresh = await f.controller('new', A), recovery = new ProfileRecovery(fresh, 'steam:1');
   const list = await recovery.listLocal(f.destination); assert.equal(list.sources[0].ownership, 'legacy');
   const s = (await recovery.select(list.sources[0].token)).selection;
-  await recovery.map(s.token, s.roots[0].id, path.join(f.directory, 'target'));
+  const target = path.join(f.directory, 'target');
+  await fs.mkdir(target);
+  await recovery.map(s.token, s.roots[0].id, target);
   const confirmed = JSON.stringify(await recovery.targets(s.token));
   await assert.rejects(recovery.import(s.token, confirmed), /Konfirmasi penautan/);
   const imported = await recovery.import(s.token, confirmed, true);
@@ -163,7 +167,7 @@ test('service account routing isolates profiles and credentials and drains old s
   const source = (await fs.readFile(new URL('../integration/overlay/src/main/services/personal-cloud-backup/index.ts', import.meta.url), 'utf8')).replaceAll('import.meta.env.MAIN_VITE_API_URL', JSON.stringify(A.server));
   const modules = {
     electron: { app: { getPath: () => '/profile-data' }, BrowserWindow: { getAllWindows: () => [] } },
-    'node:path': path, 'node:fs': {}, '@main/level': {}, '../native-addon': {}, '../game-running-state': {}, '../logger': { logger: { warn() {} } }, '../launched-game-pids': {}, './core/profile-recovery.mjs': {}, './core/controller.mjs': { BackupController: Controller }, './core/launch-guard.mjs': {}, '../epic/cloud-saves': {},
+    'node:path': path, 'node:fs': {}, '@main/level': {}, '../native-addon': {}, '../game-running-state': {}, '../logger': { logger: { warn() {} } }, '../launched-game-pids': {}, './core/profile-recovery.mjs': {}, './core/profile-restore-queue.mjs': {}, './core/controller.mjs': { BackupController: Controller }, './core/launch-guard.mjs': {}, '../epic/cloud-saves': {},
     '../hydra-api': { HydraApi: { getAuthContext: () => context, onAuthContextChanged: fn => { listener = fn; } } },
     './core/backup-account.mjs': { accountKey, hydraIdentity },
     './onedrive': { getOneDrive: async () => {}, stopOneDrive: async c => { stoppedClouds.push(c); } },

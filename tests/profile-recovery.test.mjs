@@ -7,7 +7,8 @@ import { randomUUID } from 'node:crypto';
 import { gzipSync } from 'node:zlib';
 import { BackupController } from '../module/controller.mjs';
 import { BackupEngine, makeRoots, digest } from '../module/engine.mjs';
-import { ProfileRecovery } from '../module/profile-recovery.mjs';
+import { ProfileRecovery, assertWindowsProfileTarget } from '../module/profile-recovery.mjs';
+import { ProfileRestoreQueue } from '../module/profile-restore-queue.mjs';
 import { packVersion, splitSharedBundle, sharedObjectName, unpackBundle } from '../module/cloud-bundle.mjs';
 
 async function fixture(t) {
@@ -32,6 +33,7 @@ async function fixture(t) {
   assert.equal(listing.sources.length, 1);
   const token = listing.sources[0].token;
   const target = path.join(dir, 'new-user', 'saves');
+  await fs.mkdir(target, { recursive: true });
   const select = async () => {
     const selected = await recovery.select(token);
     const s = selected.selection;
@@ -42,14 +44,14 @@ async function fixture(t) {
   return { dir, old, manifest, c, recovery, token, target, select, publish, destination };
 }
 
-test('lost profile restores to new identity and missing save path; original backup stays byte-identical', async t => {
+test('lost profile restores to new identity and initialized save folder; original backup stays byte-identical', async t => {
   const f = await fixture(t);
   assert.notEqual(f.c.state.deviceId, f.old.deviceId);
   const folder = path.join(f.old.directory('steam:1'), f.manifest.id);
   const before = await fs.readFile(path.join(folder, 'manifest.json'));
   const key = await f.select();
   const imported = await f.publish(key);
-  await assert.rejects(fs.stat(f.target), { code: 'ENOENT' }, 'import does not write live save');
+  assert.deepEqual(await fs.readdir(f.target), [], 'import does not write live save');
   const result = await f.c.restore(imported.gameId, imported.versionId, true);
   assert.equal(await fs.readFile(path.join(f.target, 'slot.sav'), 'utf8'), 'old progress');
   assert.deepEqual(await fs.readFile(path.join(folder, 'manifest.json')), before);
@@ -115,7 +117,9 @@ test('missing mapping, forged token, changed configuration and changed confirmed
   await assert.rejects(f.recovery.targets(selected.token), /setiap lokasi/);
   await f.recovery.map(selected.token, selected.roots[0].id, f.target);
   const confirmed = JSON.stringify(await f.recovery.targets(selected.token));
-  await f.recovery.map(selected.token, selected.roots[0].id, path.join(f.dir, 'other-target'));
+  const otherTarget = path.join(f.dir, 'other-target');
+  await fs.mkdir(otherTarget);
+  await f.recovery.map(selected.token, selected.roots[0].id, otherTarget);
   await assert.rejects(f.recovery.import(selected.token, confirmed), /Tujuan berubah/);
   await f.c.configure({ retention: 9 });
   await assert.rejects(f.recovery.targets(selected.token), /Pengaturan berubah/);
@@ -126,13 +130,13 @@ test('targets reject source backup overlap, module data, drive root, symlinks an
   const f = await fixture(t);
   const key = await f.select();
   const root = f.recovery.snapshot().selection.roots[0];
-  for (const target of [path.parse(f.dir).root, f.c.stateDirectory, f.destination, path.join(f.destination, 'HydraPersonalBackup', 'anything')]) {
+  await assert.rejects(f.recovery.map(key, root.id, path.parse(f.dir).root), /drive/);
+  for (const target of [f.c.stateDirectory, f.destination, f.old.directory('steam:1')]) {
     await f.recovery.map(key, root.id, target);
     await assert.rejects(f.recovery.targets(key), /drive|bertumpuk|terpisah/);
   }
   const file = path.join(f.dir, 'file.sav'); await fs.writeFile(file, 'x');
-  await f.recovery.map(key, root.id, file);
-  await assert.rejects(f.recovery.targets(key), /Jenis lokasi/);
+  await assert.rejects(f.recovery.map(key, root.id, file), /Jenis lokasi/);
   const link = path.join(f.dir, 'link'); await fs.symlink(f.destination, link);
   await assert.rejects(f.recovery.map(key, root.id, link), /Tautan/);
 });
@@ -144,7 +148,7 @@ test('source mutations and corrupt blobs fail before local publication', async t
   await fs.writeFile(path.join(folder, 'data', hash), 'corrupt');
   await assert.rejects(f.publish(key), /rusak|tidak tersedia|tidak lengkap/);
   assert.deepEqual(await f.c.engine.versions('steam:1'), []);
-  await assert.rejects(fs.stat(f.target), { code: 'ENOENT' });
+  assert.deepEqual(await fs.readdir(f.target), []);
 });
 
 for (const shared of [false, true]) test(`OneDrive old profile recovery validates ${shared ? 'shared blobs' : 'legacy package'} and account`, async t => {
@@ -201,12 +205,198 @@ test('multiple roots require explicit mapping and support missing individual fil
   const listing = await f.recovery.listLocal(f.destination);
   const source = listing.sources.find(s => s.createdAt === m.createdAt);
   const s = (await f.recovery.select(source.token)).selection;
-  for (const root of s.roots) await f.recovery.map(s.token, root.id, root.kind === 'file' ? path.join(f.dir, 'new-single.sav') : f.target);
+  const targetFile = path.join(f.dir, 'current-account', 'new-single.sav');
+  const fileRoot = s.roots.find(root => root.kind === 'file');
+  const folderRoot = s.roots.find(root => root.kind === 'directory');
+  await fs.rmdir(f.target);
+  await assert.rejects(f.recovery.map(s.token, folderRoot.id, f.target), /Buka game/);
+  await assert.rejects(f.recovery.map(s.token, fileRoot.id, targetFile), /Buka game.*buat save/);
+  assert.ok(f.recovery.snapshot().selection.roots.every(root => !root.target));
+  await fs.mkdir(path.dirname(targetFile));
+  await fs.mkdir(f.target);
+  await f.recovery.map(s.token, fileRoot.id, targetFile);
+  await f.recovery.map(s.token, folderRoot.id, f.target);
+  const confirmed = JSON.stringify(await f.recovery.targets(s.token));
+  await fs.rmdir(path.dirname(targetFile));
+  await assert.rejects(f.recovery.import(s.token, confirmed), /Buka game/);
+  await fs.mkdir(path.dirname(targetFile));
   const imported = await f.publish(s.token);
   await f.c.restore(imported.gameId, imported.versionId, true);
-  assert.equal(await fs.readFile(path.join(f.dir, 'new-single.sav'), 'utf8'), 'single');
+  assert.equal(await fs.readFile(targetFile, 'utf8'), 'single');
   assert.equal(await fs.readFile(path.join(f.target, 'slot'), 'utf8'), 'folder');
 });
+
+test('Windows restore blocks another user profile but accepts active and shared save locations', () => {
+  const home = String.raw`C:\Users\Player`;
+  for (const target of [String.raw`C:\Users\Administrator\AppData\EldenRing`, String.raw`D:\Users\Player\Saves`, String.raw`C:\Users\PlayerOld\Saves`, String.raw`C:\Users`, home]) {
+    assert.throws(() => assertWindowsProfileTarget(target, home), /profil Windows aktif/);
+  }
+  for (const target of [String.raw`c:\users\PLAYER\AppData\EldenRing`, String.raw`C:\Users\Public\Documents\Saves`, String.raw`D:\Games\Saves`]) {
+    assert.doesNotThrow(() => assertWindowsProfileTarget(target, home));
+  }
+});
+
+test('old profile restore prefills existing matching roots and leaves stale, ambiguous and other account saves for manual selection', async t => {
+  const f = await fixture(t);
+  const previous = path.join(f.dir, 'old-profile', 'Game');
+  const active = path.join(f.dir, 'active-profile', 'Game');
+  const elsewhere = path.join(f.dir, 'second-install', 'Game');
+  const exact = path.join(f.dir, 'shared.sav');
+  const previousFiles = [exact, ...['GraphicsConfig.xml', 'account/ER0000.sl2', 'account/ER0000.sl2.bak', 'account/stale.sav', 'previous-account/other.sav'].map(name => path.join(previous, name))];
+  const activeFiles = [exact, ...['GraphicsConfig.xml', 'account/ER0000.sl2', 'account/ER0000.sl2.bak', 'account/stale.sav', 'new-account/other.sav'].map(name => path.join(active, name)), path.join(elsewhere, 'account/ER0000.sl2.bak')];
+  for (const file of new Set([...previousFiles, ...activeFiles])) {
+    await fs.mkdir(path.dirname(file), { recursive: true });
+    await fs.writeFile(file, 'progress');
+  }
+  const roots = await makeRoots(previousFiles.map(file => ({ path: file })));
+  const backup = await f.old.backup('steam:1', roots);
+  await fs.writeFile(path.join(f.old.directory('steam:1'), '_INFO GAME.txt'), previousFiles.map(file => `- ${file}`).join('\n'));
+  await f.c.manual('steam:1', activeFiles.map(file => ({ path: file })));
+  await fs.unlink(path.join(active, 'account/stale.sav'));
+
+  const list = await f.recovery.listLocal(f.destination);
+  const { selection } = await f.recovery.select(list.sources.find(source => source.createdAt === backup.createdAt).token);
+  assert.deepEqual(new Map(selection.roots.map(root => [root.originalPath, root.target])), new Map([
+    [exact, exact],
+    [path.join(previous, 'GraphicsConfig.xml'), path.join(active, 'GraphicsConfig.xml')],
+    [path.join(previous, 'account/ER0000.sl2'), path.join(active, 'account/ER0000.sl2')],
+    [path.join(previous, 'account/ER0000.sl2.bak'), ''],
+    [path.join(previous, 'account/stale.sav'), ''],
+    [path.join(previous, 'previous-account/other.sav'), ''],
+  ]));
+  await assert.rejects(f.recovery.targets(selection.token), /setiap lokasi/);
+});
+
+test('account folders group a backup into one destination and leave other profiles untouched', async t => {
+  const f = await fixture(t);
+  const source = path.join(f.dir, 'old', 'Game');
+  const game = path.join(f.dir, 'active', 'Game');
+  const save = 'ER0000.sl2';
+  const extra = `${save}.bak`;
+  const shared = 'GraphicsConfig.xml';
+  const sourceFiles = [shared, `100/${save}`, `100/${extra}`].map(file => path.join(source, file));
+  const first = path.join(game, '200', save);
+  const second = path.join(game, '300', save);
+  const currentShared = path.join(game, shared);
+  for (const file of [...sourceFiles, currentShared, first, second]) {
+    await fs.mkdir(path.dirname(file), { recursive: true });
+    await fs.writeFile(file, sourceFiles.includes(file) ? 'old data' : 'current data');
+  }
+  const backup = await f.old.backup('steam:1', await makeRoots(sourceFiles.map(file => ({ path: file }))));
+  await fs.writeFile(path.join(f.old.directory('steam:1'), '_INFO GAME.txt'), sourceFiles.map(file => `- ${file}`).join('\n'));
+  const sourceToken = (await f.recovery.listLocal(f.destination)).sources.find(item => item.createdAt === backup.createdAt).token;
+
+  await f.c.manual('steam:1', [currentShared, first].map(file => ({ path: file })));
+  const single = (await f.recovery.select(sourceToken)).selection;
+  assert.deepEqual(single.targetProfiles.map(profile => profile.name), ['200']);
+  assert.ok((await f.recovery.targets(single.token)).some(root => root.path === path.join(path.dirname(first), extra)));
+
+  await f.c.manual('steam:1', [currentShared, first, second].map(file => ({ path: file })));
+  const multiple = (await f.recovery.select(sourceToken)).selection;
+  assert.deepEqual(multiple.targetProfiles.map(profile => profile.name), ['200', '300']);
+  await assert.rejects(f.recovery.targets(multiple.token), /Pilih profil save/);
+  assert.throws(() => f.recovery.chooseTargetProfile(multiple.token, 'forged'), /profil tujuan/);
+  f.recovery.chooseTargetProfile(multiple.token, multiple.targetProfiles[1].token);
+  const targets = await f.recovery.targets(multiple.token);
+  assert.ok(targets.some(root => root.path === second));
+  assert.ok(targets.every(root => root.path !== first));
+  const untouched = await fs.stat(first);
+  f.c.engine.onProgress = (_, phase) => {
+    if (phase === 'restore-cleanup') throw new Error('interrupted after commit');
+  };
+  await assert.rejects(f.recovery.import(multiple.token, JSON.stringify(targets), false, { restore: true }), /interrupted after commit/);
+  await f.c.recover('steam:1');
+  assert.equal(await f.c.engine.recovery('steam:1'), null);
+  assert.equal(await fs.readFile(second, 'utf8'), 'old data');
+  assert.equal(await fs.readFile(path.join(path.dirname(second), extra), 'utf8'), 'old data');
+  assert.equal(await fs.readFile(first, 'utf8'), 'current data');
+  assert.equal((await fs.stat(first)).ino, untouched.ino);
+  assert.ok(f.c.state.games['steam:1'].roots.some(root => root.path === first));
+  const safety = (await f.c.engine.versions('steam:1')).find(version => version.safety && version.scoped);
+  f.c.engine.onProgress = () => {};
+  await f.c.restore('steam:1', safety.id, true);
+  assert.equal(await fs.readFile(second, 'utf8'), 'current data');
+  assert.equal((await fs.stat(first)).ino, untouched.ino);
+});
+
+for (const scenario of ['single', 'multiple', 'cancel-waiting', 'cancel-staging']) {
+  test(`background profile restore: ${scenario}`, async t => {
+    const f = await fixture(t);
+    const oldFile = path.join(f.dir, 'old', 'Game', '100', 'ER0000.sl2');
+    const current = path.join(f.dir, 'current', 'Game');
+    const first = path.join(current, '200', 'ER0000.sl2');
+    const second = path.join(current, '300', 'ER0000.sl2');
+    await fs.mkdir(path.dirname(oldFile), { recursive: true });
+    await fs.writeFile(oldFile, 'old progress');
+    const oldBackup = await f.old.backup('steam:1', await makeRoots([{ path: oldFile }]));
+    await fs.writeFile(path.join(f.old.directory('steam:1'), '_INFO GAME.txt'), `- ${oldFile}`);
+    const listing = await f.recovery.listLocal(f.destination);
+    const source = listing.sources.find(item => item.createdAt === oldBackup.createdAt);
+    const { selection } = await f.recovery.select(source.token);
+    assert.ok(selection.roots.every(root => !root.target));
+    const paths = scenario === 'multiple' ? [first, second] : [first];
+    let running = false;
+    let detectionCalls = 0;
+    f.c.detect = async gameId => {
+      detectionCalls++;
+      for (const file of paths) await fs.access(file);
+      return f.c.manual(gameId, paths.map(file => ({ path: file })));
+    };
+    const queue = new ProfileRestoreQueue(f.c, async () => {
+      if (running) throw Object.assign(new Error('Game masih berjalan.'), { code: 'GAME_RUNNING' });
+    }, (job, controls) => job.recovery.import(job.token, job.confirmedTargets, job.claimLegacy, { ...controls, restore: true }));
+    queue.enqueue(f.recovery, selection.token);
+    const job = queue.jobs.get('steam:1');
+    await job.inFlight;
+    assert.equal(queue.snapshot('steam:1')[0].status, 'waiting');
+    assert.equal(detectionCalls, 1);
+    assert.throws(() => queue.cancel(job.id, 'custom:new-id'), /Antrean/);
+    if (scenario === 'cancel-waiting') queue.cancel(job.id);
+
+    running = true;
+    for (const file of paths) {
+      await fs.mkdir(path.dirname(file), { recursive: true });
+      await fs.writeFile(file, 'fresh progress');
+    }
+    await queue.gameClosed('custom:new-id');
+    assert.equal(await fs.readFile(first, 'utf8'), 'fresh progress');
+    assert.equal(detectionCalls, 1);
+
+    let replacementStarted = false;
+    f.c.engine.onProgress = (_, phase) => {
+      if (scenario === 'cancel-staging' && phase === 'restore-staging') queue.cancel(job.id);
+      if (phase === 'restore-replacing') {
+        replacementStarted = true;
+        assert.equal(queue.snapshot()[0].status, 'finishing');
+        assert.throws(() => queue.cancel(job.id), /tidak dapat dibatalkan/);
+      }
+    };
+    running = false;
+    await queue.gameClosed('steam:1');
+    if (scenario === 'cancel-waiting' || scenario === 'cancel-staging') {
+      assert.equal(queue.snapshot()[0].status, 'cancelled');
+      assert.equal(replacementStarted, false);
+      assert.equal(await fs.readFile(first, 'utf8'), 'fresh progress');
+      assert.equal(await f.c.engine.recovery('steam:1'), null);
+      assert.deepEqual(await fs.readdir(path.dirname(first)), [path.basename(first)]);
+      return;
+    }
+    if (scenario === 'multiple') {
+      const [pending] = queue.snapshot();
+      assert.equal(pending.status, 'choose');
+      assert.deepEqual(pending.targetProfiles.map(profile => profile.name), ['200', '300']);
+      assert.equal(await fs.readFile(second, 'utf8'), 'fresh progress');
+      queue.choose(job.id, pending.targetProfiles[1].token);
+      await job.inFlight;
+      assert.equal(await fs.readFile(second, 'utf8'), 'old progress');
+      assert.equal(await fs.readFile(first, 'utf8'), 'fresh progress');
+    } else {
+      assert.equal(await fs.readFile(first, 'utf8'), 'old progress');
+    }
+    assert.equal(replacementStarted, true);
+    assert.equal(queue.snapshot()[0].status, 'complete');
+  });
+}
 
 test('local recovery streams saves larger than OneDrive limit without bundling them in memory', async t => {
   const f = await fixture(t);

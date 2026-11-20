@@ -145,7 +145,8 @@ export async function validateValue(engine, gameId, roots, value) {
   return value;
 }
 
-export async function importVersion(engine, gameId, roots, bytes) {
+export async function importVersion(engine, gameId, roots, bytes, { signal } = {}) {
+  signal?.throwIfAborted();
   const value = Buffer.isBuffer(bytes) ? await validateBundle(engine, gameId, roots, bytes) : await validateValue(engine, gameId, roots, bytes);
   if (engine.account !== undefined && accountMatch(value.manifest.account, engine.account.hydra) !== 'matched') throw new Error('Pemilik backup tidak cocok dengan profil Hydra aktif.');
   const m = { ...value.manifest, ...(engine.account !== undefined ? { account: engine.account } : {}) };
@@ -168,6 +169,7 @@ export async function importVersion(engine, gameId, roots, bytes) {
     await fs.mkdir(path.join(stage, 'data'), { recursive: true });
     const compressed = [];
     for (const hash of new Set(m.files.map(f => f.hash))) {
+      signal?.throwIfAborted();
       const raw = Buffer.from(value.blobs[hash], 'base64');
       let stored = raw;
       if (raw.length >= 4096) {
@@ -181,6 +183,7 @@ export async function importVersion(engine, gameId, roots, bytes) {
     await fs.writeFile(path.join(stage, 'manifest.json'), metadata);
     await fs.writeFile(path.join(stage, 'COMPLETE'), digest(metadata));
     engine.assertAccount();
+    signal?.throwIfAborted();
     await fs.rename(stage, target);
   } finally { await fs.rm(stage, { recursive: true, force: true }); }
   return m.id;

@@ -1,5 +1,6 @@
 import * as fs from 'node:fs/promises';
 import path from 'node:path';
+import { homedir } from 'node:os';
 import { randomUUID } from 'node:crypto';
 import { accountMatch } from './backup-account.mjs';
 import { BackupEngine, digest, safePath, portableManifest } from './engine.mjs';
@@ -17,6 +18,49 @@ const overlaps = (a, b) => {
 const fingerprint = m => digest(JSON.stringify({ roots: m.roots, files: m.files }));
 // Keep only metadata between user steps, never a whole cloud save in memory.
 const selectionValue = value => ({ schema: value.schema, manifest: value.manifest, ...(value.local ? { local: value.local } : {}) });
+const mergeRoots = (configured, targets) => [...new Map([...configured, ...targets].map(root => [root.id, root])).values()];
+const profileId = name => /^\d{1,20}$/.test(name);
+const profileFileName = name => /^[a-z0-9_][a-z0-9_. -]*$/i.test(name) && !/[. ]$/.test(name) && !/^(con|prn|aux|nul|com[0-9]|lpt[0-9])(?:\.|$)/i.test(name);
+
+export function assertWindowsProfileTarget(target, home) {
+  const windows = path.win32;
+  const relative = windows.relative(home, target);
+  if (!relative) throw new Error('Pilih folder save game di dalam profil Windows aktif.');
+  if (relative !== '..' && !relative.startsWith('..\\') && !windows.isAbsolute(relative)) return;
+
+  const parts = target.slice(windows.parse(target).root.length).split('\\');
+  const profileRoot = /^(users|documents and settings)$/i.test(parts[0]);
+  const shared = parts.length > 2 && /^public$/i.test(parts[1]);
+  if (profileRoot && !shared) throw new Error('Tujuan berada di luar profil Windows aktif. Pilih lokasi save yang digunakan game pada profil Windows ini.');
+}
+
+async function validateTarget(target, kind) {
+  const resolved = await safePath(target);
+  if (resolved === path.parse(resolved).root) throw new Error('Pilih lokasi save game di dalam drive.');
+  if (process.platform === 'win32') assertWindowsProfileTarget(resolved, homedir());
+
+  const folder = kind === 'file' ? path.dirname(resolved) : resolved;
+  try {
+    if (!(await fs.lstat(folder)).isDirectory()) throw new Error('Jenis lokasi tujuan tidak sesuai backup.');
+    if (kind === 'file') {
+      const info = await fs.lstat(resolved).catch(error => {
+        if (error.code === 'ENOENT') return null;
+        throw error;
+      });
+      if (info && !info.isFile()) throw new Error('Jenis lokasi tujuan tidak sesuai backup.');
+    }
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+    throw new Error('Folder save tujuan belum ada. Buka game pada profil Windows ini, buat save, lalu tutup game dan pilih lokasi lagi.');
+  }
+  return resolved;
+}
+
+function recoveryLocationKey(location) {
+  // Keep the parent name, which can be the game account ID.
+  const paths = path.win32;
+  return [paths.basename(paths.dirname(location)), paths.basename(location)].join('/').toLowerCase();
+}
 
 // Each renderer-visible ID is an opaque, session-only capability. Paths, source
 // manifests and account identity remain in the main process.
@@ -43,6 +87,7 @@ export class ProfileRecovery {
     )).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     return { profiles, profileToken: this.profileToken, sources,
       selection: this.selection ? { token: this.selection.token, ownership: this.selection.ownership, gameId: this.selection.gameId, title: this.selection.source.title, targetTitle: this.selection.gameTitle, sourceGameId: this.selection.value.manifest.gameId, deviceId: this.selection.source.deviceId, createdAt: this.selection.value.manifest.createdAt,
+        targetProfiles: this.selection.targetProfiles.map(({ token, name, folder }) => ({ token, name, folder })),
         roots: this.selection.value.manifest.roots.map(root => ({ id: root.id, kind: root.kind, files: this.selection.value.manifest.files.filter(f => f.rootId === root.id).length, samples: this.selection.value.manifest.files.filter(f => f.rootId === root.id).slice(0, 3).map(f => f.relative), originalPath: this.selection.source.locations?.[root.id] || '', target: this.selection.mapping[root.id] || '' })) } : null };
   }
   reset() {
@@ -198,44 +243,146 @@ export class ProfileRecovery {
     const virtual = m.roots.map((r, i) => ({ id: r.id, kind: r.kind, path: path.join(path.dirname(c.stateDirectory), `hydra-validation-${randomUUID()}`, String(i)) }));
     if (value.local) await validateManifest(sourceEngine, m.gameId, virtual, m, { local: true });
     else await validateValue(sourceEngine, m.gameId, virtual, value);
-    if (!this.visible(token)) throw new Error('Pilih ulang backup lama.');
-    this.selection = { token: randomUUID(), gameId, gameTitle: game.title, ownership, source, value: selectionValue(value), mapping: {}, engine: c.engine, config: JSON.stringify(c.state.games[gameId] ?? null) };
+    const config = c.state.games[gameId];
+    const selection = { token: randomUUID(), gameId, gameTitle: game.title, ownership, source, value: selectionValue(value), engine: c.engine, config: JSON.stringify(config ?? null) };
+    selection.mapping = await this.detectTargets(selection, config?.roots ?? []);
+    selection.targetProfiles = await this.detectTargetProfiles(selection, config?.roots ?? []);
+    if (selection.targetProfiles.length === 1) selection.mapping = selection.targetProfiles[0].mapping;
+    if (!this.visible(token) || this.sources.get(token) !== source || selection.engine !== c.engine || selection.config !== JSON.stringify(c.state.games[gameId] ?? null)) {
+      throw new Error('Pengaturan berubah. Pilih ulang backup lama.');
+    }
+    this.selection = selection;
     return this.snapshot();
+  }
+  async detectTargetProfiles(selection, configured) {
+    const manifest = selection.value.manifest;
+    const windows = path.win32;
+    const pathsById = new Map(configured.map(root => [root.id, root.path]));
+    const sourceFiles = manifest.roots.map(root => ({ ...root, location: selection.source.locations?.[root.id] ?? pathsById.get(root.id) }));
+    if (sourceFiles.some(root => root.kind !== 'file' || !root.location)) return [];
+    const accountFiles = sourceFiles.filter(root => profileId(windows.basename(windows.dirname(root.location))));
+    const sourceFolder = accountFiles[0] && windows.dirname(accountFiles[0].location);
+    if (!sourceFolder || accountFiles.some(root => windows.dirname(root.location).toLowerCase() !== sourceFolder.toLowerCase())) return [];
+    const names = accountFiles.map(root => windows.basename(root.location));
+    const sourceGameFolder = windows.dirname(sourceFolder);
+    const gameFolder = windows.basename(sourceGameFolder).toLowerCase();
+    const shared = sourceFiles.filter(root => !accountFiles.includes(root));
+    if (!sourceFiles.every(root => profileFileName(windows.basename(root.location))) ||
+      shared.some(root => windows.dirname(root.location).toLowerCase() !== sourceGameFolder.toLowerCase())) return [];
+
+    // A current profile must be anchored by a configured save that still exists.
+    const profiles = new Map();
+    const pathKey = location => process.platform === 'win32' ? location.toLowerCase() : location;
+    const configuredPaths = new Map(configured.map(root => [pathKey(root.path), root.path]));
+    const filenames = new Set(names.map(pathKey));
+    for (const root of configured) {
+      const folder = path.dirname(root.path);
+      const name = path.basename(folder);
+      const file = path.basename(root.path);
+      if (root.kind !== 'file' || !profileId(name) || path.basename(path.dirname(folder)).toLowerCase() !== gameFolder ||
+        !filenames.has(pathKey(file))) continue;
+      const stat = await fs.lstat(root.path).catch(() => null);
+      if (stat?.isFile()) profiles.set(folder, { name, folder });
+    }
+
+    const choices = [];
+    for (const profile of profiles.values()) {
+      const mapping = Object.fromEntries(sourceFiles.map(root => {
+        const folder = shared.includes(root) ? path.dirname(profile.folder) : profile.folder;
+        const target = path.join(folder, windows.basename(root.location));
+        return [root.id, configuredPaths.get(pathKey(target)) ?? target];
+      }));
+      try {
+        const roots = await this.validateMapping(selection, mapping);
+        await selection.engine.validate(mergeRoots(configured, roots));
+        choices.push({ ...profile, token: randomUUID(), mapping });
+      } catch {
+        // Unsafe or incompatible layouts remain available through manual mapping.
+      }
+    }
+    return choices.sort((a, b) => a.name.localeCompare(b.name));
+  }
+  async detectTargets(selection, configured) {
+    const proposals = [];
+    for (const root of selection.value.manifest.roots) {
+      const original = selection.source.locations?.[root.id];
+      const possible = configured.filter(candidate => candidate.kind === root.kind &&
+        (candidate.id === root.id || (original && recoveryLocationKey(candidate.path) === recoveryLocationKey(original))));
+      if (possible.length !== 1) continue;
+      const [candidate] = possible;
+      try {
+        // Automatic matches need an existing save. Manual recovery can create a missing file.
+        await fs.lstat(candidate.path);
+        const target = await validateTarget(candidate.path, root.kind);
+        await selection.engine.validate([{ ...candidate, path: target }]);
+        this.assertTargetProtection(selection, [target]);
+        proposals.push({ id: root.id, target });
+      } catch {
+        // Stale or unsafe configured locations require manual selection.
+      }
+    }
+    return Object.fromEntries(proposals.filter(proposal => !proposals.some(other =>
+      other !== proposal && overlaps(other.target, proposal.target))).map(({ id, target }) => [id, target]));
   }
   current(token) {
     const s = this.selection, c = this.controller;
     if (!s || s.token !== token || s.engine !== c.engine || s.config !== JSON.stringify(c.state.games[s.gameId] ?? null)) throw new Error('Pengaturan berubah. Pilih ulang backup lama.');
     return s;
   }
+  forkForRestore(token) {
+    const selection = this.current(token);
+    const { gameId, gameTitle, source, ownership } = selection;
+    const recovery = new ProfileRecovery(this.controller, gameId);
+    const sourceToken = randomUUID();
+    recovery.sources.set(sourceToken, source);
+    recovery.selection = { ...selection, mapping: selection.targetProfiles.length ? selection.mapping : { ...selection.mapping } };
+    return { recovery, sourceToken, gameId, title: gameTitle, claimLegacy: ownership === 'legacy' };
+  }
   async map(token, rootId, target) {
     const s = this.current(token);
-    if (!s.value.manifest.roots.some(r => r.id === rootId)) throw new Error('Lokasi sumber tidak valid.');
-    const resolved = await safePath(target);
+    if (s.targetProfiles.length) throw new Error('Pilih profil save sebagai tujuan pemulihan.');
+    const root = s.value.manifest.roots.find(r => r.id === rootId);
+    if (!root) throw new Error('Lokasi sumber tidak valid.');
+    const resolved = await validateTarget(target, root.kind);
     this.current(token).mapping[rootId] = resolved;
     return this.snapshot();
   }
+  chooseTargetProfile(token, profileToken) {
+    const selection = this.current(token);
+    const profile = selection.targetProfiles.find(choice => choice.token === profileToken);
+    if (!profile) throw new Error('Pilih profil tujuan yang tersedia.');
+    selection.mapping = profile.mapping;
+  }
   async targets(token) {
     const s = this.current(token);
-    const roots = [];
-    for (const root of s.value.manifest.roots) {
-      const target = s.mapping[root.id];
-      if (!target) throw new Error('Pilih tujuan untuk setiap lokasi save.');
-      await safePath(target);
-      if (target === path.parse(target).root) throw new Error('Pilih lokasi save, bukan seluruh drive.');
-      const info = await fs.lstat(target).catch(e => { if (e.code === 'ENOENT') return null; throw e; });
-      if (info && (root.kind === 'file' ? !info.isFile() : !info.isDirectory())) throw new Error('Jenis lokasi tujuan tidak sesuai backup.');
-      roots.push({ id: digest(target).slice(0, 24), path: target, kind: root.kind });
+    if (s.targetProfiles.length > 1 && !s.targetProfiles.some(profile => profile.mapping === s.mapping)) {
+      throw new Error('Pilih profil save sebagai tujuan pemulihan.');
     }
-    await this.controller.engine.validate(roots);
-    // Never allow recovery targets to contain or overwrite the source backup.
-    const protectedPaths = [this.controller.stateDirectory, ...(s.source.destination ? [path.join(path.resolve(s.source.destination), 'HydraPersonalBackup')] : [])];
-    if (roots.some(r => protectedPaths.some(p => overlaps(r.path, p)))) throw new Error('Lokasi tujuan bertumpuk dengan backup sumber atau data modul.');
-    const otherRoots = Object.entries(this.controller.state.games).flatMap(([gameId, config]) => gameId === s.gameId ? [] : config.roots);
-    if (roots.some(root => otherRoots.some(other => overlaps(root.path, other.path)))) throw new Error('Lokasi tujuan bertumpuk dengan lokasi save game lain.');
+    const roots = await this.validateMapping(s, s.mapping);
     if (!(await this.controller.getGames()).some(g => g.id === s.gameId)) throw new Error('Game tidak tersedia di pustaka.');
     return roots;
   }
-  async importLocal(engine, roots, manifest, source) {
+  async validateMapping(s, mapping) {
+    const roots = [];
+    for (const root of s.value.manifest.roots) {
+      const target = mapping[root.id];
+      if (!target) throw new Error('Pilih tujuan untuk setiap lokasi save.');
+      await validateTarget(target, root.kind);
+      roots.push({ id: digest(target).slice(0, 24), path: target, kind: root.kind });
+    }
+    await s.engine.validate(roots);
+    this.assertTargetProtection(s, roots.map(root => root.path));
+    return roots;
+  }
+  assertTargetProtection(selection, targets) {
+    // Never allow recovery targets to contain or overwrite the source backup.
+    const source = selection.source.destination;
+    const protectedPaths = [this.controller.stateDirectory, ...(source ? [path.join(path.resolve(source), 'HydraPersonalBackup')] : [])];
+    if (targets.some(target => protectedPaths.some(p => overlaps(target, p)))) throw new Error('Lokasi tujuan bertumpuk dengan backup sumber atau data modul.');
+    const otherRoots = Object.entries(this.controller.state.games).flatMap(([gameId, config]) => gameId === selection.gameId ? [] : config.roots);
+    if (targets.some(target => otherRoots.some(other => overlaps(target, other.path)))) throw new Error('Lokasi tujuan bertumpuk dengan lokasi save game lain.');
+  }
+  async importLocal(engine, roots, manifest, source, signal) {
     await validateManifest(engine, manifest.gameId, roots, manifest, { local: true });
     const entries = [...new Map(manifest.files.map(f => [f.hash, f])).values()];
     const directory = engine.directory(manifest.gameId);
@@ -245,6 +392,7 @@ export class ProfileRecovery {
     try {
       await fs.mkdir(path.join(stage, 'data'), { recursive: true });
       for (const entry of entries) {
+        signal?.throwIfAborted();
         const original = path.join(source.folder, 'data', entry.hash);
         await safePath(original);
         await fs.copyFile(original, path.join(stage, 'data', entry.hash));
@@ -255,13 +403,15 @@ export class ProfileRecovery {
       await fs.writeFile(path.join(stage, 'manifest.json'), bytes, { flag: 'wx' });
       await fs.writeFile(path.join(stage, 'COMPLETE'), digest(bytes), { flag: 'wx' });
       this.controller.assertAccount?.();
+      signal?.throwIfAborted();
       await fs.rename(stage, path.join(directory, manifest.id));
       return manifest.id;
     } finally { await fs.rm(stage, { recursive: true, force: true }); }
   }
-  async import(token, confirmedTargets, claimLegacy = false, { restore = false } = {}) {
+  async import(token, confirmedTargets, claimLegacy = false, { restore = false, signal, onCommit } = {}) {
     const gameId = this.current(token).gameId;
     return this.controller.control(async () => {
+      signal?.throwIfAborted();
       const s = this.current(token), c = this.controller;
       if (c.getAccount && s.ownership === 'legacy' && !claimLegacy) throw new Error('Backup lama belum memiliki pemilik. Konfirmasi penautan ke profil Hydra aktif diperlukan.');
       const roots = await this.targets(token);
@@ -272,18 +422,23 @@ export class ProfileRecovery {
       const value = await this.sourceValue(s.source);
       if (JSON.stringify(selectionValue(value)) !== JSON.stringify(s.value)) throw new Error('Backup sumber berubah. Pilih ulang versi.');
       const original = value.manifest;
+      const scoped = s.targetProfiles.length > 0;
+      const current = c.state.games[s.gameId];
+      const configured = scoped ? mergeRoots(current.roots, roots) : roots;
+      await c.engine.validate(configured);
       const map = new Map(original.roots.map((r, i) => [r.id, roots[i].id]));
-      const manifest = { ...portableManifest(original), id: randomUUID(), deviceId: c.engine.deviceId, gameId: s.gameId, order: Date.now(), reason: 'profile-recovery',
+      const manifest = { ...portableManifest(original), id: randomUUID(), deviceId: c.engine.deviceId, gameId: s.gameId, order: Date.now(), reason: 'profile-recovery', scoped,
         origin: { gameId: original.gameId, deviceId: original.deviceId, versionId: original.id, account: original.account ?? null, claimedLegacy: s.ownership === 'legacy' },
         ...(c.engine.account !== undefined ? { account: c.engine.account } : {}),
         roots: original.roots.map(r => ({ ...r, id: map.get(r.id) })), files: original.files.map(f => ({ ...f, rootId: map.get(f.rootId) })) };
       manifest.fingerprint = fingerprint(manifest);
-      const versionId = value.local ? await this.importLocal(c.engine, roots, manifest, value.local) : await importVersion(c.engine, s.gameId, roots, { ...value, manifest });
-      c.state.games[s.gameId] = { roots, mode: 'manual', title: s.gameTitle };
+      signal?.throwIfAborted();
+      const versionId = value.local ? await this.importLocal(c.engine, roots, manifest, value.local, signal) : await importVersion(c.engine, s.gameId, roots, { ...value, manifest }, { signal });
+      c.state.games[s.gameId] = { roots: configured, mode: scoped ? current.mode : 'manual', title: s.gameTitle };
       await c.save();
       c.lastScan.delete(s.gameId);
       this.selection = undefined;
-      if (restore) await c.restoreInternal(s.gameId, versionId, true);
+      if (restore) await c.restoreInternal(s.gameId, versionId, true, { signal, onCommit });
       return { gameId: s.gameId, versionId };
     }, restore ? 'restore' : 'profile-import', gameId);
   }

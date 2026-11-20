@@ -34,11 +34,20 @@ current.activity = [{ at, gameId, status: current.status.status, detail: current
 let cloudState = { account: undefined as import("../../module/cloud-sync.mjs").CloudSnapshot["account"], provider: "onedrive", clientId: "11111111-2222-3333-4444-555555555555", connected: false, autoRetention: false, retention: 10, login: null as null | { userCode: string; expiresAt: number; url: string }, pending: 0, uploaded: 0, uploading: false, error: "", notice: undefined as string | undefined, versions: [] as Array<{ name: string; modifiedAt: string; size: number }> };
 const calls: Record<string, unknown>[] = [];
 let profileState: import("../../module/profile-recovery.mjs").ProfileRecoverySnapshot = { profiles: [], sources: [], selection: null };
+let pendingRestore: import("../../module/profile-restore-queue.mjs").ProfileRestoreStatus[] = [];
 const snapshot = () => structuredClone(current);
 const invoke = async (request: Record<string, unknown>) => {
   calls.push(request);
   if (request.gameId !== gameId && !(settingsView && request.gameId === undefined)) throw new Error("UI meminta game di luar fixture.");
   if (request.action === "profile-recovery") {
+    if (request.command === "pending") return structuredClone(pendingRestore);
+    if (request.command === "cancel-pending") {
+      pendingRestore = pendingRestore.map(job => job.id === request.jobId ? { ...job, status: "cancelled" } : job);
+      return structuredClone(pendingRestore);
+    }
+    if (request.command === "defer" && window.confirm("Antrekan pemulihan save?")) {
+      pendingRestore = [{ id: "pending-restore", gameId, title: "Game Contoh", status: "waiting" }];
+    }
     const oldSource = { token: "old-source", title: "Game Contoh · Profil sebelum install ulang", deviceId: "11111111-2222-3333-4444-555555555555", gameId, createdAt: at, ownership: cloudState.account?.matched ? "matched" as const : "legacy" as const, source: "local" as const, restorable: true };
     if (request.command === "local" || request.command === "onedrive") {
       const source = request.command === "onedrive" ? "onedrive" : "local";
@@ -46,7 +55,12 @@ const invoke = async (request: Record<string, unknown>) => {
     }
     if (request.command === "details") profileState = { ...profileState, profileToken: "old-profile", sources: [oldSource, { ...oldSource, token: "other-source", gameId: "steam:2", title: "Game lama lain", restorable: false }] };
     if (request.command === "profiles") profileState = { ...profileState, sources: [], selection: null, profileToken: undefined };
-    if (request.command === "select") profileState.selection = { token: "selected-source", ownership: oldSource.ownership, gameId, title: "Game Contoh", targetTitle: "Game Contoh", sourceGameId: gameId, deviceId: "old-device", createdAt: at, roots: [{ id: "old-folder", kind: "directory", files: 2, samples: ["slot.sav", "settings.json"], target: "" }, { id: "old-file", kind: "file", files: 1, samples: ["."], target: "" }] };
+    if (request.command === "select") profileState.selection = { token: "selected-source", ownership: oldSource.ownership, gameId, title: "Game Contoh", targetTitle: "Game Contoh", sourceGameId: gameId, deviceId: "old-device", createdAt: at, roots: scenario === "complete"
+      ? current.roots.map(root => ({ id: root.id, kind: root.kind, files: 1, samples: ["."], target: root.path }))
+      : [{ id: "old-folder", kind: "directory", files: 2, samples: ["slot.sav", "settings.json"], target: "" }, { id: "old-file", kind: "file", files: 1, samples: ["."], target: "" }] };
+    if (request.command === "select" && new URLSearchParams(location.search).has("target-profiles")) {
+      profileState.selection!.targetProfiles = ["200", "300"].map(name => ({ name, token: `target-${name}`, folder: `${folder}\\${name}` }));
+    }
     if (request.command === "map") profileState.selection!.roots.find(r => r.id === request.rootId)!.target = request.rootId === "old-folder" ? "C:\\Users\\NewPlayer\\Saved Games\\Game Contoh" : "C:\\Users\\NewPlayer\\AppData\\Roaming\\Game Contoh\\profile.sav";
     if (request.command === "restore" && window.confirm("Simulasi pemulihan profil lama. Tidak ada file asli yang diganti.")) {
       current.versions = [version("old-profile-imported"), version("safety", true)];
