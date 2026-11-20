@@ -3,10 +3,11 @@ import path from 'node:path';
 import { homedir } from 'node:os';
 import { randomUUID } from 'node:crypto';
 import { accountMatch } from './backup-account.mjs';
-import { BackupEngine, digest, safePath, portableManifest } from './engine.mjs';
+import { BackupEngine, digest, safePath, portableManifest, overlappingPathIndices } from './engine.mjs';
 import { unpackBundle, readSharedIndex, materializeShared, validateValue, validateManifest, importVersion, BUNDLE_LIMIT } from './cloud-bundle.mjs';
 
 const id = value => typeof value === 'string' && /^[a-zA-Z0-9_-]{1,100}$/.test(value) && !value.startsWith('_');
+const MAX_PROFILE_ROOTS = 10_000;
 const missing = error => { if (error.code === 'ENOENT') return []; throw error; };
 const overlaps = (a, b) => {
   const contains = (parent, child) => {
@@ -88,7 +89,7 @@ export class ProfileRecovery {
     return { profiles, profileToken: this.profileToken, sources,
       selection: this.selection ? { token: this.selection.token, ownership: this.selection.ownership, gameId: this.selection.gameId, title: this.selection.source.title, targetTitle: this.selection.gameTitle, sourceGameId: this.selection.value.manifest.gameId, deviceId: this.selection.source.deviceId, createdAt: this.selection.value.manifest.createdAt,
         targetProfiles: this.selection.targetProfiles.map(({ token, name, folder }) => ({ token, name, folder })),
-        roots: this.selection.value.manifest.roots.map(root => ({ id: root.id, kind: root.kind, files: this.selection.value.manifest.files.filter(f => f.rootId === root.id).length, samples: this.selection.value.manifest.files.filter(f => f.rootId === root.id).slice(0, 3).map(f => f.relative), originalPath: this.selection.source.locations?.[root.id] || '', target: this.selection.mapping[root.id] || '' })) } : null };
+        roots: this.selection.rootSummaries.map(root => ({ ...root, target: this.selection.mapping[root.id] || '' })) } : null };
   }
   reset() {
     this.sources = new Map();
@@ -234,17 +235,30 @@ export class ProfileRecovery {
     const game = (await c.getGames()).find(g => g.id === gameId);
     if (!game || !c.engine) throw new Error('Game yang sama harus tersedia di pustaka dan folder backup lokal harus dipilih.');
     const value = await this.sourceValue(source), m = value.manifest;
-    if (!m || !id(m.deviceId) || m.gameId !== gameId || !Array.isArray(m.roots) || !m.roots.length || m.roots.length > 100) throw new Error('Metadata profil lama tidak valid.');
+    if (!m || !id(m.deviceId) || m.deviceId !== source.deviceId || m.gameId !== gameId) throw new Error('Identitas game atau perangkat pada backup profil lama tidak cocok.');
+    if (!Array.isArray(m.roots) || !m.roots.length) throw new Error('Backup profil lama tidak mencatat lokasi save. Pilih versi backup lain.');
+    if (m.roots.length > MAX_PROFILE_ROOTS) throw new Error(`Backup ini mencatat ${m.roots.length} lokasi save. Pemulihan mendukung hingga ${MAX_PROFILE_ROOTS} lokasi per versi.`);
+    if (m.roots.some(root => !root || typeof root.id !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(root.id) || !['directory', 'file'].includes(root.kind))) {
+      throw new Error('Jenis atau ID lokasi save pada backup profil lama tidak valid. Pilih versi backup lain.');
+    }
     // Validate foreign manifest BEFORE rewriting identity or fingerprint. Virtual
     // roots only validate relative paths; foreign absolute paths are never used.
     const ownership = this.ownership(m, source.cloud ? source.driveId : undefined);
     if (ownership === 'different') throw new Error('Backup bukan milik pasangan akun Hydra dan OneDrive aktif.');
     const sourceEngine = new BackupEngine({ destination: c.engine.destination, deviceId: m.deviceId, stateDirectory: c.stateDirectory });
-    const virtual = m.roots.map((r, i) => ({ id: r.id, kind: r.kind, path: path.join(path.dirname(c.stateDirectory), `hydra-validation-${randomUUID()}`, String(i)) }));
+    const validationDirectory = path.join(path.dirname(c.stateDirectory), `hydra-validation-${randomUUID()}`);
+    const virtual = m.roots.map((r, i) => ({ id: r.id, kind: r.kind, path: path.join(validationDirectory, String(i)) }));
     if (value.local) await validateManifest(sourceEngine, m.gameId, virtual, m, { local: true });
     else await validateValue(sourceEngine, m.gameId, virtual, value);
     const config = c.state.games[gameId];
-    const selection = { token: randomUUID(), gameId, gameTitle: game.title, ownership, source, value: selectionValue(value), engine: c.engine, config: JSON.stringify(config ?? null) };
+    const rootSummaries = m.roots.map(root => ({ id: root.id, kind: root.kind, files: 0, samples: [], originalPath: source.locations?.[root.id] || '' }));
+    const summariesById = new Map(rootSummaries.map(root => [root.id, root]));
+    for (const file of m.files) {
+      const summary = summariesById.get(file.rootId);
+      summary.files++;
+      if (summary.samples.length < 3) summary.samples.push(file.relative);
+    }
+    const selection = { token: randomUUID(), gameId, gameTitle: game.title, ownership, source, value: selectionValue(value), rootSummaries, engine: c.engine, config: JSON.stringify(config ?? null) };
     selection.mapping = await this.detectTargets(selection, config?.roots ?? []);
     selection.targetProfiles = await this.detectTargetProfiles(selection, config?.roots ?? []);
     if (selection.targetProfiles.length === 1) selection.mapping = selection.targetProfiles[0].mapping;
@@ -304,11 +318,20 @@ export class ProfileRecovery {
   }
   async detectTargets(selection, configured) {
     const proposals = [];
+    const byId = new Map(configured.map(root => [root.id, root]));
+    const byLocation = new Map();
+    for (const root of configured) {
+      const key = `${root.kind}:${recoveryLocationKey(root.path)}`;
+      const candidates = byLocation.get(key) ?? [];
+      candidates.push(root);
+      byLocation.set(key, candidates);
+    }
     for (const root of selection.value.manifest.roots) {
       const original = selection.source.locations?.[root.id];
-      const possible = configured.filter(candidate => candidate.kind === root.kind &&
-        (candidate.id === root.id || (original && recoveryLocationKey(candidate.path) === recoveryLocationKey(original))));
-      if (possible.length !== 1) continue;
+      const possible = new Set(original ? byLocation.get(`${root.kind}:${recoveryLocationKey(original)}`) : []);
+      const exact = byId.get(root.id);
+      if (exact?.kind === root.kind) possible.add(exact);
+      if (possible.size !== 1) continue;
       const [candidate] = possible;
       try {
         // Automatic matches need an existing save. Manual recovery can create a missing file.
@@ -321,8 +344,8 @@ export class ProfileRecovery {
         // Stale or unsafe configured locations require manual selection.
       }
     }
-    return Object.fromEntries(proposals.filter(proposal => !proposals.some(other =>
-      other !== proposal && overlaps(other.target, proposal.target))).map(({ id, target }) => [id, target]));
+    const conflicts = overlappingPathIndices(proposals.map(proposal => proposal.target));
+    return Object.fromEntries(proposals.filter((_, index) => !conflicts.has(index)).map(({ id, target }) => [id, target]));
   }
   current(token) {
     const s = this.selection, c = this.controller;

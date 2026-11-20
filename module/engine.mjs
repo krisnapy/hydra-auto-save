@@ -21,6 +21,27 @@ const contained = (parent, child) => {
   return !relative || (!relative.startsWith(`..${path.sep}`) && relative !== '..' && !path.isAbsolute(relative));
 };
 
+export function overlappingPathIndices(paths) {
+  const indices = new Map();
+  const keys = paths.map(file => {
+    const resolved = path.resolve(file);
+    return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
+  });
+  const conflicts = new Set();
+  for (const [index, key] of keys.entries()) {
+    const previous = indices.get(key);
+    if (previous === undefined) indices.set(key, index);
+    else { conflicts.add(previous); conflicts.add(index); }
+  }
+  for (const [index, key] of keys.entries()) {
+    for (let current = key, parent = path.dirname(current); parent !== current; current = parent, parent = path.dirname(current)) {
+      const related = indices.get(parent);
+      if (related !== undefined) { conflicts.add(related); conflicts.add(index); }
+    }
+  }
+  return conflicts;
+}
+
 export async function hashFile(file) {
   const hash = createHash('sha256');
   for await (const chunk of createReadStream(file)) hash.update(chunk);
@@ -109,11 +130,9 @@ export async function makeRoots(selections) {
     const info = await fs.lstat(file);
     const kind = info.isDirectory() ? 'directory' : info.isFile() ? 'file' : null;
     if (!kind) throw new Error('Lokasi save harus berupa file atau folder biasa.');
-    if (roots.some(root => contained(root.path, file) || contained(file, root.path))) {
-      throw new Error('Lokasi save ganda atau saling bertumpuk.');
-    }
     roots.push({ id: digest(file).slice(0, 24), path: file, kind });
   }
+  if (overlappingPathIndices(roots.map(root => root.path)).size) throw new Error('Lokasi save ganda atau saling bertumpuk.');
   return roots.sort((a, b) => a.id.localeCompare(b.id));
 }
 
@@ -164,9 +183,7 @@ export class BackupEngine {
         throw new Error('Folder backup dan data modul harus terpisah dari lokasi save.');
       }
     }
-    for (let i = 0; i < roots.length; i++) for (let j = i + 1; j < roots.length; j++) {
-      if (contained(roots[i].path, roots[j].path) || contained(roots[j].path, roots[i].path)) throw new Error('Lokasi save saling bertumpuk.');
-    }
+    if (overlappingPathIndices(roots.map(root => root.path)).size) throw new Error('Lokasi save saling bertumpuk.');
   }
 
   changedFiles(before, after, roots) {

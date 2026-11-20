@@ -33,7 +33,12 @@ registerEvent("personalBackup", async (event, request: unknown) => {
     const confirmRestore = async (token: string) => {
       const targets = await recovery.targets(token);
       const selected = recovery.snapshot().selection!;
-      const confirmation = await dialog.showMessageBox(parent, { type: "warning", title: "Pulihkan dari profil lama?", message: `Pulihkan ${selected.title}, backup ${new Date(selected.createdAt).toLocaleString()} ke ${selected.targetTitle}?`, detail: `${selected.ownership === "legacy" ? "Backup lama belum mencatat pemilik. Dengan melanjutkan, Anda menautkan salinan backup ini ke akun Hydra aktif.\n\n" : "Pemilik backup cocok dengan akun Hydra dan sumber yang aktif.\n\n"}ID game sumber: ${selected.sourceGameId}.\nID game tujuan: ${selected.gameId}.\nPerangkat sumber: ${selected.deviceId}.\nTujuan pada profil baru:\n${targets.map(r => r.path).join("\n")}\n\nPastikan game dan semua tujuan sesuai. Tutup game. Save saat ini dicadangkan. File dengan nama dan lokasi yang sama diganti oleh versi lama. File tambahan dan backup sumber tetap disimpan.`, buttons: ["Batal", selected.ownership === "legacy" ? "Tautkan dan pulihkan" : "Pulihkan"], defaultId: 0, cancelId: 0, noLink: true });
+      const previewLimit = 12;
+      const previewPaths = targets.slice(0, previewLimit).map(root => root.path);
+      if (targets.length > previewLimit) {
+        previewPaths.push(`… ${targets.length - previewLimit} lokasi lainnya.`);
+      }
+      const confirmation = await dialog.showMessageBox(parent, { type: "warning", title: "Pulihkan dari profil lama?", message: `Pulihkan ${selected.title}, backup ${new Date(selected.createdAt).toLocaleString()} ke ${selected.targetTitle}?`, detail: `${selected.ownership === "legacy" ? "Backup lama belum mencatat pemilik. Dengan melanjutkan, Anda menautkan salinan backup ini ke akun Hydra aktif.\n\n" : "Pemilik backup cocok dengan akun Hydra dan sumber yang aktif.\n\n"}ID game sumber: ${selected.sourceGameId}.\nID game tujuan: ${selected.gameId}.\nPerangkat sumber: ${selected.deviceId}.\nTujuan pada profil baru (${targets.length} lokasi):\n${previewPaths.join("\n")}\n\nPastikan game dan semua tujuan sesuai. Tutup game. Save saat ini dicadangkan. File dengan nama dan lokasi yang sama diganti oleh versi lama. File tambahan dan backup sumber tetap disimpan.`, buttons: ["Batal", selected.ownership === "legacy" ? "Tautkan dan pulihkan" : "Pulihkan"], defaultId: 0, cancelId: 0, noLink: true });
       if (confirmation.response !== 1) return recovery.snapshot();
       getProfileRestoreQueue(controller).enqueue(recovery, token, JSON.stringify(targets));
       return recovery.snapshot();

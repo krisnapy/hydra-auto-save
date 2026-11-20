@@ -28,7 +28,7 @@ Jika import selesai tetapi restore gagal, versi impor tetap ada di **Pulihkan** 
 - Pemilihan profil tersedia untuk backup file dengan satu folder akun bernomor dan file bersama di tingkat folder game. Hydra memakai lokasi yang diketahui dari metadata lokal atau ID lokasi yang masih cocok. Saat memilih satu profil, file akun lain tetap tersedia dan file bersama yang tercakup dalam versi dapat dipulihkan.
 - Pemulihan memakai penguncian peluncuran Hydra, pemeriksaan proses game, backup pengaman, staging dan journal yang sama dengan restore biasa.
 - Sumber OneDrive diikat ke akun asal. Pergantian akun membatalkan pemulihan. Paket `.hpb` baru tetap memerlukan blob `.hpd` yang dirujuknya. Batas OneDrive tetap 128 MiB isi save/10.000 file per versi, paket 192 MiB.
-- Backup lokal disalin dan diverifikasi lewat streaming, tanpa batas ukuran paket OneDrive. Metadata lokal dibatasi 8 MiB per versi, maksimal 100 lokasi dan 5.000 versi per pencarian. Pencarian OneDrive dibatasi 500 folder dan 40.000 file pada tata folder aplikasi yang dikenali; tidak menelusuri seluruh drive.
+- Backup lokal disalin dan diverifikasi lewat streaming, tanpa batas ukuran paket OneDrive. Pemulihan mendukung hingga 10.000 lokasi save per versi. Metadata lokal dibatasi 8 MiB per versi dan pencarian dibatasi 5.000 versi. Pencarian OneDrive dibatasi 500 folder dan 40.000 file pada tata folder aplikasi yang dikenali.
 - Ini pemulihan satu versi yang dipilih, dengan penggantian pada tingkat file. Isi dua versi dari file yang sama tidak digabung.
 
 ## Bukti pengujian

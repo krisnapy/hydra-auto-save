@@ -181,7 +181,13 @@ test('backup gagal bila cloud tidak dapat ditulis, versi lama tetap ada', async 
 });
 
 test('lokasi backup bertumpuk dengan save dan symlink ditolak', async t => {
-  const { engine, roots, save, directory } = await fixture(t);
+  const { engine, roots, save, directory, file } = await fixture(t);
+  const sibling = path.join(directory, 'save-extra');
+  await fs.mkdir(sibling);
+  await engine.validate(await makeRoots([{ path: save }, { path: sibling }]));
+  await assert.rejects(makeRoots([{ path: file }, { path: sibling }, { path: save }]), /bertumpuk/);
+  const [child] = await makeRoots([{ path: file }]);
+  await assert.rejects(engine.validate([child, ...roots]), /bertumpuk/);
   engine.destination = path.join(save, 'backups');
   await assert.rejects(engine.backup('steam:1', roots), /terpisah/);
   await fs.symlink(save, path.join(directory, 'link'), process.platform === 'win32' ? 'junction' : 'dir');

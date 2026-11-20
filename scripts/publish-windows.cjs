@@ -45,6 +45,8 @@ module.exports = async ({ github, context, core }) => {
     body: [
       'Versi uji awal berbasis Hydra Launcher 4.3.0.', '',
       `## Perubahan ${version}`,
+      '- Pemulihan mendukung backup profil lama dengan lebih dari 100 lokasi save. Pesan validasi menunjukkan penyebab metadata ditolak.',
+      '- Konfirmasi merangkum daftar tujuan yang panjang.',
       '- Pemulihan profil lama dapat diantrekan saat game belum membuat folder save. Buka game, buat save pertama, lalu tutup game.',
       '- Hydra memakai satu profil tujuan yang cocok secara otomatis. Jika ada beberapa profil, pilih **Pulihkan di sini** di samping profil yang sesuai.',
       '- Pantau status atau batalkan pemulihan sebelum tahap penggantian file. Antrean tetap aktif saat Hydra berada di tray.',

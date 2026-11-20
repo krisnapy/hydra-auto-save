@@ -196,6 +196,57 @@ test('foreign traversal and fingerprint corruption are rejected before remapping
   }
 });
 
+for (const [fromCloud, count] of [[false, 993], [true, 101]]) test(`restores a profile with ${count} separate save files from ${fromCloud ? 'OneDrive' : 'local backup'}`, async t => {
+  const f = await fixture(t);
+  const folder = path.join(f.dir, 'game-many-files');
+  await fs.mkdir(folder);
+  const files = Array.from({ length: count }, (_, i) => path.join(folder, `slot-${i}.sav`));
+  for (const file of files) await fs.writeFile(file, 'old slot');
+  const roots = await makeRoots(files.map(file => ({ path: file })));
+  const version = await f.old.backup('steam:1', roots);
+  await f.c.manual('steam:1', files.map(file => ({ path: file })));
+  for (const file of files) await fs.writeFile(file, 'new slot');
+  const extra = path.join(folder, 'new-only.sav');
+  await fs.writeFile(extra, 'new save');
+
+  let listed;
+  if (fromCloud) {
+    const bytes = await packVersion(f.old, 'steam:1', version.id);
+    const name = `${digest(version.gameId)}_${version.deviceId}_${version.id}_${digest(bytes)}.hpb`;
+    listed = await f.recovery.listCloud({ connected: true, state: { driveId: 'A' }, provider: {
+      identity: async () => 'A', listProfiles: async () => [{ name }], download: async () => bytes,
+    } });
+  } else {
+    listed = await f.recovery.listLocal(f.destination);
+  }
+  const source = listed.sources.find(item => item.createdAt === version.createdAt);
+  const { selection } = await f.recovery.select(source.token);
+  assert.equal(selection.roots.length, count);
+  assert.ok(selection.roots.every(root => root.files === 1 && root.target));
+  const targets = await f.recovery.targets(selection.token);
+  await f.recovery.import(selection.token, JSON.stringify(targets), false, { restore: true });
+  for (const file of files) assert.equal(await fs.readFile(file, 'utf8'), 'old slot');
+  assert.equal(await fs.readFile(extra, 'utf8'), 'new save');
+});
+
+test('old profile recovery identifies missing or invalid save locations', async t => {
+  const f = await fixture(t);
+  const backup = await unpackBundle(await packVersion(f.old, 'steam:1', f.manifest.id));
+  for (const [roots, detail] of [
+    [[], /tidak mencatat lokasi save/],
+    [[null], /Jenis atau ID lokasi save/],
+    [Array(10_001).fill(backup.manifest.roots[0]), /10001 lokasi save.*10000 lokasi/],
+  ]) {
+    const bytes = gzipSync(Buffer.from(JSON.stringify({ ...backup, manifest: { ...backup.manifest, roots } })));
+    const name = `${digest('steam:1')}_${f.old.deviceId}_${f.manifest.id}_${digest(bytes)}.hpb`;
+    const cloud = { connected: true, state: { driveId: 'A' }, provider: {
+      identity: async () => 'A', listProfiles: async () => [{ name }], download: async () => bytes,
+    } };
+    const listing = await f.recovery.listCloud(cloud);
+    await assert.rejects(f.recovery.select(listing.sources[0].token), detail);
+  }
+});
+
 test('multiple roots require explicit mapping and support missing individual file target', async t => {
   const f = await fixture(t);
   const file = path.join(f.dir, 'old-single.sav'); await fs.writeFile(file, 'single');

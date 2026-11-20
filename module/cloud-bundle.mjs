@@ -119,16 +119,20 @@ export async function validateBundle(engine, gameId, roots, bytes) {
 export async function validateManifest(engine, gameId, roots, m, { local = false } = {}) {
   if (!m || m.schema !== 1 || m.compressed !== undefined || m.gameId !== gameId || m.deviceId !== engine.deviceId || !/^[a-zA-Z0-9_-]{1,100}$/.test(m.id) || m.id.startsWith('_') || !Array.isArray(m.files) || !Array.isArray(m.roots) || (!local && m.files.length > 10000) || typeof m.createdAt !== 'string' || !Number.isFinite(Date.parse(m.createdAt)) || typeof m.safety !== 'boolean' || !Number.isSafeInteger(m.order) || m.order < 0) throw invalid();
   await engine.validate(roots);
-  if (m.roots.length !== roots.length || new Set(m.roots.map(r => r?.id)).size !== roots.length || m.roots.some(r => !r || !roots.some(target => target.id === r.id && target.kind === r.kind) || typeof r.present !== 'boolean')) throw invalid();
+  const configuredById = new Map(roots.map(root => [root.id, root]));
+  if (m.roots.length !== roots.length || new Set(m.roots.map(r => r?.id)).size !== roots.length ||
+      m.roots.some(r => !r || configuredById.get(r.id)?.kind !== r.kind || typeof r.present !== 'boolean')) throw invalid();
+  const available = new Map(m.roots.filter(root => root.present).map(root => [root.id, 0]));
   const targets = new Set(); let size = 0;
   for (const entry of m.files) {
-    if (!entry || !Number.isSafeInteger(entry.bytes) || entry.bytes < 0 || !/^[a-f0-9]{64}$/.test(entry.hash) || !m.roots.some(r => r.id === entry.rootId && r.present)) throw invalid();
+    if (!entry || !Number.isSafeInteger(entry.bytes) || entry.bytes < 0 || !/^[a-f0-9]{64}$/.test(entry.hash) || !available.has(entry.rootId)) throw invalid();
     size += entry.bytes;
-    const target = engine.source(roots, entry).toLowerCase();
+    const target = engine.source([configuredById.get(entry.rootId)], entry).toLowerCase();
     if (targets.has(target) || !Number.isSafeInteger(size) || (!local && size > SAVE_LIMIT)) throw invalid();
     targets.add(target);
+    available.set(entry.rootId, available.get(entry.rootId) + 1);
   }
-  for (const root of m.roots) if (root.present && root.kind === 'file' && m.files.filter(f => f.rootId === root.id).length !== 1) throw invalid();
+  for (const root of m.roots) if (root.present && root.kind === 'file' && available.get(root.id) !== 1) throw invalid();
   if (digest(JSON.stringify({ roots: m.roots, files: m.files })) !== m.fingerprint) throw invalid();
   return m;
 }

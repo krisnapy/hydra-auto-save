@@ -84,6 +84,17 @@ export function ProfileRecoveryPanel({ gameId, disabled, onRestored }: { gameId?
   const selection = snapshot?.selection;
   const queued = selection && jobs.some(job => job.gameId === selection.gameId && active(job));
   const targetProfiles = selection?.targetProfiles ?? [];
+  const missingTargets = selection?.roots.some(root => !root.target) ?? false;
+  const collapseLocations = !missingTargets && (selection?.roots.length ?? 0) > 12;
+
+  const locations = selection && !queued && !targetProfiles.length && selection.roots.map((root, index) => <div key={root.id}>
+    <p>Lokasi {index + 1} · {root.kind === "file" ? "File" : "Folder"} · {root.files} file</p>
+    {root.originalPath && <p>Lokasi pada backup lama (referensi): {root.originalPath}</p>}
+    <p>Isi: {root.samples.map(sample => sample === "." ? "File tunggal" : sample).join(", ") || "Lokasi kosong atau tidak ada pada versi ini"}</p>
+    <p>{root.target || "Tujuan belum dipilih"}</p>
+    <button disabled={blocked} onClick={() => void command("map", { token: selection.token, rootId: root.id })}>{root.target ? "Ubah" : "Pilih"} tujuan lokasi {index + 1}</button>
+  </div>);
+
   const sources = snapshot?.sources ?? [];
   const games = new Map<string, typeof sources>();
   for (const source of sources) {
@@ -144,18 +155,15 @@ export function ProfileRecoveryPanel({ gameId, disabled, onRestored }: { gameId?
           <div><strong>Profil {profile.name}</strong>{targetProfiles.some(other => other !== profile && other.name === profile.name) && <p>{profile.folder}</p>}</div>
           <button disabled={blocked} aria-label={`Pulihkan di sini, profil ${profile.name}`} onClick={() => void command("restore", { token: selection.token, targetProfile: profile.token })}>Pulihkan di sini</button>
         </li>)}</ul> : <>
-        {selection.roots.some(root => !root.target) ? <p>Pilih tujuan untuk lokasi yang belum cocok. Jika game baru dipasang, buka {selection.targetTitle}, buat save, lalu tutup game.</p> : <p>Periksa tujuan di bawah, lalu konfirmasi pemulihan.</p>}
-        {selection.roots.some(root => !root.target) && <button disabled={blocked} onClick={() => void command("defer", { token: selection.token })}>Pulihkan setelah game ditutup</button>}
-        {selection.roots.map((root, index) => <div key={root.id}>
-          <p>Lokasi {index + 1} · {root.kind === "file" ? "File" : "Folder"} · {root.files} file</p>
-          {root.originalPath && <p>Lokasi pada backup lama (referensi): {root.originalPath}</p>}
-          <p>Isi: {root.samples.map(sample => sample === "." ? "File tunggal" : sample).join(", ") || "Lokasi kosong atau tidak ada pada versi ini"}</p>
-          <p>{root.target || "Tujuan belum dipilih"}</p>
-          <button disabled={blocked} onClick={() => void command("map", { token: selection.token, rootId: root.id })}>{root.target ? "Ubah" : "Pilih"} tujuan lokasi {index + 1}</button>
-        </div>)}
-        <button disabled={blocked || selection.roots.some(root => !root.target)} onClick={() => void command("restore", { token: selection.token })}>Pulihkan versi ini</button>
+        {missingTargets ? <p>Pilih tujuan untuk lokasi yang belum cocok. Jika game baru dipasang, buka {selection.targetTitle}, buat save, lalu tutup game.</p> : <p>Periksa tujuan di bawah, lalu konfirmasi pemulihan.</p>}
+        {missingTargets && <button disabled={blocked} onClick={() => void command("defer", { token: selection.token })}>Pulihkan setelah game ditutup</button>}
+        {collapseLocations ? <details key={selection.token}>
+          <summary>Lihat {selection.roots.length} lokasi save</summary>
+          {locations}
+        </details> : locations}
+        <button disabled={blocked || missingTargets} onClick={() => void command("restore", { token: selection.token })}>Pulihkan versi ini</button>
         </>}
-        <p className="personal-backup__muted">Konfirmasi menampilkan semua tujuan. Save saat ini dicadangkan sebelum diganti.</p>
+        <p className="personal-backup__muted">Save saat ini dicadangkan sebelum diganti.</p>
       </div>}
     </>}
   </div>;

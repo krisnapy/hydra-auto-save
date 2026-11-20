@@ -61,6 +61,18 @@ test('old profile restore requires native confirmation and queues only the confi
   await assert.rejects(failed.invoke({ command: 'restore', token: 'main-token' }), /changed targets/);
 });
 
+test('native restore confirmation summarizes large destination lists and queues every location', async () => {
+  const h = await harness({ confirm: true });
+  for (let i = 1; i < 993; i++) {
+    h.roots.push({ ...h.roots[0], id: `r-${i}`, path: `C:/new-user/slot-${i}.sav` });
+  }
+  await h.invoke({ command: 'restore', token: 'main-token' });
+  assert.match(h.dialogs[0].detail, /993 lokasi/);
+  assert.match(h.dialogs[0].detail, /981 lokasi lainnya/);
+  assert.doesNotMatch(h.dialogs[0].detail, /slot-992\.sav/);
+  assert.deepEqual(h.calls, [['enqueue', 'main-token', JSON.stringify(h.roots)]]);
+});
+
 test('source and target paths come from native pickers; cancellation and untrusted senders cannot map or restore', async () => {
   const h = await harness();
   await h.invoke({ command: 'local', path: 'C:/forged' });
