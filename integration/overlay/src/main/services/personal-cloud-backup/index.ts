@@ -122,13 +122,21 @@ export const onPersonalBackupGameClosed = (game: Game) => {
 export const restorePersonalBackup = (gameId: string, versionId: string) =>
   withRestoreGate(gameId, () => runWithHydraSaveGuard(async () => (await getPersonalBackup()).restore(gameId, versionId, true)));
 
+export const restoreOldProfileBackup = (recovery: ProfileRecovery, gameId: string, token: string, targets: string, claimLegacy: boolean) =>
+  withRestoreGate(gameId, () => runWithHydraSaveGuard(() => recovery.import(token, targets, claimLegacy, { restore: true })));
+
 export const recoverPersonalBackup = (gameId: string) =>
   withRestoreGate(gameId, () => runWithHydraSaveGuard(async () => (await getPersonalBackup()).recover(gameId)));
 
-const profileRecoveries = new WeakMap<BackupController, ProfileRecovery>();
-export const getProfileRecovery = async () => {
+const profileRecoveries = new WeakMap<BackupController, { settings: ProfileRecovery; game?: { id: string; recovery: ProfileRecovery } }>();
+export const getProfileRecovery = async (gameId?: string) => {
   const controller = await getPersonalBackup();
-  let recovery = profileRecoveries.get(controller);
-  if (!recovery) { recovery = new ProfileRecovery(controller); profileRecoveries.set(controller, recovery); }
-  return recovery;
+  let sessions = profileRecoveries.get(controller);
+  if (!sessions) {
+    sessions = { settings: new ProfileRecovery(controller) };
+    profileRecoveries.set(controller, sessions);
+  }
+  if (!gameId) return sessions.settings;
+  if (sessions.game?.id !== gameId) sessions.game = { id: gameId, recovery: new ProfileRecovery(controller, gameId) };
+  return sessions.game.recovery;
 };

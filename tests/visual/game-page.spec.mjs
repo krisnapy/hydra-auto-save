@@ -4,11 +4,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 const screenshots = fileURLToPath(new URL('../../visual-results/screenshots/', import.meta.url));
 const panel = page => page.getByRole('region', { name: 'Personal Cloud Backup' });
-async function visit(page, scenario) {
+async function visit(page, scenario, view = 'game') {
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
-  await page.goto(`/?scenario=${scenario}`);
-  await expect(panel(page).getByRole('button', { name: 'Backup sekarang', exact: true })).toBeVisible();
+  await page.goto(`/?scenario=${scenario}&view=${view}`);
+  await expect(panel(page).getByRole('button', { name: view === 'settings' ? 'Pulihkan dari perangkat/profil lama' : 'Backup sekarang', exact: true })).toBeVisible();
   await expect(page.getByText('UJI TAMPILAN', { exact: false })).toBeVisible();
   return errors;
 }
@@ -246,5 +246,26 @@ test('akun Hydra dan OneDrive ditampilkan sebagai pasangan, login diperlukan dan
   await panel(page).getByRole('button', { name: 'Pulihkan dari perangkat/profil lama', exact: true }).click();
   await panel(page).getByRole('button', { name: 'Cari backup akun ini di OneDrive', exact: true }).click();
   await expect(panel(page).getByText('Akun cocok', { exact: true })).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+test('Settings menampilkan profil dahulu dan membatasi pemulihan ke game yang cocok', async ({ page }) => {
+  const errors = await visit(page, 'complete', 'settings');
+  const recovery = page.getByLabel('Pemulihan profil lama');
+  await recovery.getByRole('button', { name: 'Pulihkan dari perangkat/profil lama' }).click();
+  await recovery.getByRole('button', { name: 'Cari backup di folder lama' }).click();
+  await expect(recovery.getByText('PC lama', { exact: true })).toBeVisible();
+  await expect(recovery.getByText('Game lama lain')).toHaveCount(0);
+  await expect(recovery.getByRole('button', { name: 'Pilih backup lama' })).toHaveCount(0);
+  await recovery.getByRole('button', { name: 'Lihat detail profil' }).click();
+  const details = recovery.getByRole('region', { name: 'Detail profil lama' });
+  await expect(details.getByRole('heading', { name: 'Game lama lain' })).toBeVisible();
+  await expect(details.getByText('Game dengan ID ini belum tersedia di pustaka saat ini.')).toBeVisible();
+  await expect(details.getByRole('button', { name: 'Pilih backup lama' })).toHaveCount(1);
+  await details.getByRole('button', { name: 'Pilih backup lama' }).click();
+  await expect(recovery.getByRole('group', { name: 'Tujuan pemulihan profil baru' })).toBeVisible();
+  await details.getByRole('button', { name: 'Kembali ke daftar profil' }).click();
+  await expect(details).toHaveCount(0);
+  await expect(recovery.getByRole('group', { name: 'Tujuan pemulihan profil baru' })).toHaveCount(0);
   expect(errors).toEqual([]);
 });

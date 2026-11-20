@@ -33,14 +33,20 @@ switch (scenario) {
 current.activity = [{ at, gameId, status: current.status.status, detail: current.status.detail ?? "Data contoh untuk pengujian tampilan." }];
 let cloudState = { account: undefined as import("../../module/cloud-sync.mjs").CloudSnapshot["account"], provider: "onedrive", clientId: "11111111-2222-3333-4444-555555555555", connected: false, autoRetention: false, retention: 10, login: null as null | { userCode: string; expiresAt: number; url: string }, pending: 0, uploaded: 0, uploading: false, error: "", notice: undefined as string | undefined, versions: [] as Array<{ name: string; modifiedAt: string; size: number }> };
 const calls: Record<string, unknown>[] = [];
-let profileState: import("../../module/profile-recovery.mjs").ProfileRecoverySnapshot = { sources: [], selection: null };
+let profileState: import("../../module/profile-recovery.mjs").ProfileRecoverySnapshot = { profiles: [], sources: [], selection: null };
 const snapshot = () => structuredClone(current);
 const invoke = async (request: Record<string, unknown>) => {
   calls.push(request);
   if (request.gameId !== gameId && !(settingsView && request.gameId === undefined)) throw new Error("UI meminta game di luar fixture.");
   if (request.action === "profile-recovery") {
-    if (request.command === "local" || request.command === "onedrive") profileState = { selection: null, sources: [{ token: "old-source", title: "Game Contoh · Profil sebelum install ulang", deviceId: "11111111-2222-3333-4444-555555555555", gameId: "custom:old-id", createdAt: at, ownership: cloudState.account?.matched ? "matched" : "legacy", source: request.command === "local" ? "local" : "onedrive" }] };
-    if (request.command === "select") profileState.selection = { token: "selected-source", ownership: cloudState.account?.matched ? "matched" : "legacy", gameId, title: "Game Contoh", targetTitle: "Game Contoh", sourceGameId: "custom:old-id", deviceId: "old-device", createdAt: at, roots: [{ id: "old-folder", kind: "directory", files: 2, samples: ["slot.sav", "settings.json"], target: "" }, { id: "old-file", kind: "file", files: 1, samples: ["."], target: "" }] };
+    const oldSource = { token: "old-source", title: "Game Contoh · Profil sebelum install ulang", deviceId: "11111111-2222-3333-4444-555555555555", gameId, createdAt: at, ownership: cloudState.account?.matched ? "matched" as const : "legacy" as const, source: "local" as const, restorable: true };
+    if (request.command === "local" || request.command === "onedrive") {
+      const source = request.command === "onedrive" ? "onedrive" : "local";
+      profileState = { selection: null, profiles: settingsView ? [{ token: "old-profile", deviceId: oldSource.deviceId, name: "PC lama", createdAt: at, source, gameCount: 2 }] : [], sources: settingsView ? [] : [{ ...oldSource, source }] };
+    }
+    if (request.command === "details") profileState = { ...profileState, profileToken: "old-profile", sources: [oldSource, { ...oldSource, token: "other-source", gameId: "steam:2", title: "Game lama lain", restorable: false }] };
+    if (request.command === "profiles") profileState = { ...profileState, sources: [], selection: null, profileToken: undefined };
+    if (request.command === "select") profileState.selection = { token: "selected-source", ownership: oldSource.ownership, gameId, title: "Game Contoh", targetTitle: "Game Contoh", sourceGameId: gameId, deviceId: "old-device", createdAt: at, roots: [{ id: "old-folder", kind: "directory", files: 2, samples: ["slot.sav", "settings.json"], target: "" }, { id: "old-file", kind: "file", files: 1, samples: ["."], target: "" }] };
     if (request.command === "map") profileState.selection!.roots.find(r => r.id === request.rootId)!.target = request.rootId === "old-folder" ? "C:\\Users\\NewPlayer\\Saved Games\\Game Contoh" : "C:\\Users\\NewPlayer\\AppData\\Roaming\\Game Contoh\\profile.sav";
     if (request.command === "restore" && window.confirm("Simulasi pemulihan profil lama. Tidak ada file asli yang diganti.")) {
       current.versions = [version("old-profile-imported"), version("safety", true)];

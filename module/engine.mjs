@@ -541,26 +541,52 @@ export class BackupEngine {
       }
       // Fail before writing live data if the safety backup cannot complete.
       const safety = await this.capture(gameId, roots, { reason: 'before-restore', safety: true });
-      const plans = roots.map(root => ({ ...root, stage: `${root.path}.hydra-restore-${randomUUID()}`, rollback: `${root.path}.hydra-previous-${randomUUID()}`, moved: false, installed: false, present: recorded.get(root.id)?.present ?? false, originalPresent: safety.roots.find(item => item.id === root.id)?.present ?? false }));
-      const writeJournal = (committed = false) => atomicJson(journal, { schema: 2, gameId, committed, safety: safety.id, safetyFingerprint: safety.fingerprint, targetFingerprint: manifest.fingerprint, plans });
+      const preserveNewFiles = manifest.reason === 'profile-recovery';
+      const key = file => {
+        const relative = process.platform === 'win32' ? file.relative.toLowerCase() : file.relative;
+        return `${file.rootId}/${relative}`;
+      };
+      const files = manifest.files.map(entry => ({ entry, version: manifest }));
+      if (preserveNewFiles) {
+        const backedUpPaths = new Set(manifest.files.map(key));
+        for (const entry of safety.files) {
+          if (!backedUpPaths.has(key(entry))) {
+            this.source(roots, entry);
+            files.push({ entry, version: safety });
+          }
+        }
+      }
+      const plans = roots.map(root => {
+        const originalPresent = safety.roots.find(item => item.id === root.id)?.present ?? false;
+        return { ...root, stage: `${root.path}.hydra-restore-${randomUUID()}`, rollback: `${root.path}.hydra-previous-${randomUUID()}`, moved: false, installed: false, originalPresent,
+          present: Boolean(recorded.get(root.id)?.present || (preserveNewFiles && originalPresent)) };
+      });
+      let targetFingerprint = manifest.fingerprint;
+      const writeJournal = (committed = false) => atomicJson(journal, { schema: 2, gameId, committed, safety: safety.id, safetyFingerprint: safety.fingerprint, targetFingerprint, plans });
       let journalWritten = false, committed = false;
       let staged = 0;
-      this.onProgress(gameId, 'restore-staging', 0, manifest.files.length);
+      this.onProgress(gameId, 'restore-staging', 0, files.length);
       try {
         for (const plan of plans) {
           await safePath(plan.path);
-          await this.requireSpace(path.dirname(plan.path), manifest.files.filter(file => file.rootId === plan.id).reduce((sum, file) => sum + file.bytes, 0));
+          const group = files.filter(({ entry }) => entry.rootId === plan.id);
+          await this.requireSpace(path.dirname(plan.path), group.reduce((sum, { entry }) => sum + entry.bytes, 0));
           await fs.mkdir(path.dirname(plan.stage), { recursive: true });
           if (plan.present && plan.kind === 'directory') await fs.mkdir(plan.stage);
-          for (const entry of manifest.files.filter(file => file.rootId === plan.id)) {
+          for (const { entry, version } of group) {
             const target = plan.kind === 'file' ? plan.stage : path.join(plan.stage, ...entry.relative.split('/'));
             await fs.mkdir(path.dirname(target), { recursive: true });
-            const blob = path.join(this.directory(gameId), manifest.id, 'data', entry.hash);
+            const blob = path.join(this.directory(gameId), version.id, 'data', entry.hash);
             await safePath(blob);
-            await pipeline(createReadStream(blob), ...(manifest.compressed?.includes(entry.hash) ? [createGunzip()] : []), checkedBytes(entry), createWriteStream(target, { flags: 'wx' }));
-            this.onProgress(gameId, 'restore-staging', ++staged, manifest.files.length);
+            await pipeline(createReadStream(blob), ...(version.compressed?.includes(entry.hash) ? [createGunzip()] : []), checkedBytes(entry), createWriteStream(target, { flags: 'wx' }));
+            this.onProgress(gameId, 'restore-staging', ++staged, files.length);
           }
           if (plan.present && plan.kind === 'file' && !await exists(plan.stage)) throw new Error('Isi file backup tidak lengkap.');
+        }
+        // Interrupted recovery verifies the staged result, including files preserved from the current profile.
+        if (preserveNewFiles) {
+          const stagedRoots = plans.map(({ id, kind, stage }) => ({ id, kind, path: stage }));
+          targetFingerprint = digest(JSON.stringify(await this.scan(stagedRoots)));
         }
         await this.assertStopped(gameId);
         this.onProgress(gameId, 'restore-checking-source');

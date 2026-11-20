@@ -4,7 +4,7 @@ import { dialog, shell } from "electron";
 import { registerEvent } from "./register-event";
 import { assertTrustedEpicSender } from "./epic/assert-trusted-sender";
 import { WindowManager } from "../services/window-manager";
-import { getPersonalBackup, restorePersonalBackup, recoverPersonalBackup, getProfileRecovery } from "../services/personal-cloud-backup";
+import { getPersonalBackup, restorePersonalBackup, restoreOldProfileBackup, recoverPersonalBackup, getProfileRecovery } from "../services/personal-cloud-backup";
 
 import { getOneDrive, oneDriveCommand } from "../services/personal-cloud-backup/onedrive";
 
@@ -22,8 +22,8 @@ registerEvent("personalBackup", async (event, request: unknown) => {
   if (!parent) throw new Error("Jendela utama tidak tersedia.");
   const gameId = typeof input.gameId === "string" ? string(input.gameId) : undefined;
   if (input.action === "profile-recovery") {
-    const recovery = await getProfileRecovery();
-    if ((input.command === "map" || input.command === "restore") && recovery.snapshot().selection?.gameId !== gameId) throw new Error("Game tujuan berubah. Pilih ulang backup lama.");
+    const recovery = await getProfileRecovery(gameId);
+    if (gameId && (input.command === "map" || input.command === "restore") && recovery.snapshot().selection?.gameId !== gameId) throw new Error("Game tujuan berubah. Pilih ulang backup lama.");
     switch (input.command) {
       case "snapshot": return recovery.snapshot();
       case "local": {
@@ -32,7 +32,9 @@ registerEvent("personalBackup", async (event, request: unknown) => {
         return recovery.snapshot();
       }
       case "onedrive": return recovery.listCloud(await getOneDrive(controller));
-      case "select": return recovery.select(string(input.token), string(gameId));
+      case "details": return recovery.details(string(input.token));
+      case "profiles": return recovery.details();
+      case "select": return recovery.select(string(input.token));
       case "map": {
         const token = string(input.token), rootId = string(input.rootId);
         const selected = recovery.snapshot().selection;
@@ -53,10 +55,9 @@ registerEvent("personalBackup", async (event, request: unknown) => {
         const token = string(input.token);
         const targets = await recovery.targets(token);
         const selected = recovery.snapshot().selection!;
-        const confirmation = await dialog.showMessageBox(parent, { type: "warning", title: "Pulihkan dari profil lama?", message: `Pulihkan ${selected.title}, backup ${new Date(selected.createdAt).toLocaleString()} ke ${selected.targetTitle}?`, detail: `${selected.ownership === "legacy" ? "Backup lama belum mencatat pemilik. Dengan melanjutkan, Anda menautkan salinan backup ini ke akun Hydra aktif.\n\n" : "Pemilik backup cocok dengan akun Hydra dan sumber yang aktif.\n\n"}ID game sumber: ${selected.sourceGameId}.\nID game tujuan: ${selected.gameId}.\nPerangkat sumber: ${selected.deviceId}.\nTujuan pada profil baru:\n${targets.map(r => r.path).join("\n")}\n\nPastikan game dan semua tujuan sesuai. Tutup game. Save saat ini dicadangkan sebelum diganti. File tambahan pada lokasi tujuan ikut diganti. Backup sumber tetap disimpan.`, buttons: ["Batal", selected.ownership === "legacy" ? "Tautkan dan pulihkan" : "Pulihkan"], defaultId: 0, cancelId: 0, noLink: true });
+        const confirmation = await dialog.showMessageBox(parent, { type: "warning", title: "Pulihkan dari profil lama?", message: `Pulihkan ${selected.title}, backup ${new Date(selected.createdAt).toLocaleString()} ke ${selected.targetTitle}?`, detail: `${selected.ownership === "legacy" ? "Backup lama belum mencatat pemilik. Dengan melanjutkan, Anda menautkan salinan backup ini ke akun Hydra aktif.\n\n" : "Pemilik backup cocok dengan akun Hydra dan sumber yang aktif.\n\n"}ID game sumber: ${selected.sourceGameId}.\nID game tujuan: ${selected.gameId}.\nPerangkat sumber: ${selected.deviceId}.\nTujuan pada profil baru:\n${targets.map(r => r.path).join("\n")}\n\nPastikan game dan semua tujuan sesuai. Tutup game. Save saat ini dicadangkan. File dengan nama dan lokasi yang sama diganti oleh versi lama. File tambahan dan backup sumber tetap disimpan.`, buttons: ["Batal", selected.ownership === "legacy" ? "Tautkan dan pulihkan" : "Pulihkan"], defaultId: 0, cancelId: 0, noLink: true });
         if (confirmation.response !== 1) return recovery.snapshot();
-        const imported = await recovery.import(token, JSON.stringify(targets), selected.ownership === "legacy");
-        await restorePersonalBackup(imported.gameId, imported.versionId);
+        await restoreOldProfileBackup(recovery, selected.gameId, token, JSON.stringify(targets), selected.ownership === "legacy");
         return { ...recovery.snapshot(), notice: "Save dari profil lama berhasil dipulihkan. Backup sumber tetap tersimpan." };
       }
       default: throw new Error("Perintah pemulihan profil tidak valid.");
@@ -177,7 +178,10 @@ registerEvent("personalBackup", async (event, request: unknown) => {
       const snapshot = await controller.snapshot(string(gameId));
       const version = snapshot.versions.find(item => item.id === versionId);
       if (!version) throw new Error("Versi belum lengkap atau tidak tersedia.");
-      const confirmation = await dialog.showMessageBox(parent, { type: "warning", title: "Pulihkan save game?", message: `Pulihkan backup ${new Date(version.createdAt).toLocaleString()}?`, detail: "Tutup game terlebih dahulu. Kondisi save saat ini akan dicadangkan sebelum diganti. File tambahan di lokasi save terpilih akan ikut diganti sesuai versi ini.", buttons: ["Batal", "Pulihkan"], defaultId: 0, cancelId: 0, noLink: true });
+      const filePolicy = version.reason === "profile-recovery"
+        ? "File dengan nama dan lokasi yang sama diganti oleh versi lama. File tambahan tetap disimpan."
+        : "File tambahan di lokasi save terpilih akan ikut diganti sesuai versi ini.";
+      const confirmation = await dialog.showMessageBox(parent, { type: "warning", title: "Pulihkan save game?", message: `Pulihkan backup ${new Date(version.createdAt).toLocaleString()}?`, detail: `Tutup game terlebih dahulu. Kondisi save saat ini akan dicadangkan sebelum diganti. ${filePolicy}`, buttons: ["Batal", "Pulihkan"], defaultId: 0, cancelId: 0, noLink: true });
       if (confirmation.response === 1) await restorePersonalBackup(string(gameId), versionId);
       break;
     }

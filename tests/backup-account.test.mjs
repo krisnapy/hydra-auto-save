@@ -55,16 +55,16 @@ test('local backups carry Hydra identity, matching survives reinstall, and anoth
   assert.deepEqual(manifest.account, backupAccount(A));
   const fresh = await f.controller('fresh-profile', A);
   assert.notEqual(old.state.deviceId, fresh.state.deviceId);
-  const recovery = new ProfileRecovery(fresh), list = await recovery.listLocal(f.destination);
+  const recovery = new ProfileRecovery(fresh, 'steam:1'), list = await recovery.listLocal(f.destination);
   assert.equal(list.sources.length, 1); assert.equal(list.sources[0].ownership, 'matched');
-  const selected = (await recovery.select(list.sources[0].token, 'steam:1')).selection;
+  const selected = (await recovery.select(list.sources[0].token)).selection;
   const target = path.join(f.directory, 'fresh-save');
   await recovery.map(selected.token, selected.roots[0].id, target);
   const imported = await recovery.import(selected.token, JSON.stringify(await recovery.targets(selected.token)));
   await fresh.restore(imported.gameId, imported.versionId, true);
   assert.equal(await fs.readFile(path.join(target, 'slot'), 'utf8'), 'progress');
   const other = await f.controller('other-profile', B);
-  assert.equal((await new ProfileRecovery(other).listLocal(f.destination)).sources.length, 0);
+  assert.equal((await new ProfileRecovery(other, 'steam:1').listLocal(f.destination)).sources.length, 0);
 });
 
 test('matching OneDrive backups require both Hydra identity and drive, even across new devices', async t => {
@@ -78,12 +78,12 @@ test('matching OneDrive backups require both Hydra identity and drive, even acro
   }
   const fresh = await f.controller('new', A), sync = await f.cloud(fresh);
   sync.provider = { identity: async () => 'drive-A', listProfiles: async () => [...remote.keys()].filter(name => name.endsWith('.hpb')).map(name => ({ name, title: 'Game' })), download: async name => remote.get(name) };
-  const recovery = new ProfileRecovery(fresh), list = await recovery.listCloud(sync);
+  const recovery = new ProfileRecovery(fresh, 'steam:1'), list = await recovery.listCloud(sync);
   assert.equal(list.sources.length, 1); assert.equal(list.sources[0].ownership, 'matched');
   const wrong = await f.controller('wrong', B), wrongSync = await f.cloud(wrong);
   wrongSync.provider = sync.provider;
-  assert.equal((await new ProfileRecovery(wrong).listCloud(wrongSync)).sources.length, 1, 'B sees only B ownership, despite same OneDrive');
-  const selected = (await recovery.select(list.sources[0].token, 'steam:1')).selection;
+  assert.equal((await new ProfileRecovery(wrong, 'steam:1').listCloud(wrongSync)).sources.length, 1, 'B sees only B ownership, despite same OneDrive');
+  const selected = (await recovery.select(list.sources[0].token)).selection;
   const target = path.join(f.directory, 'restored-cloud');
   await recovery.map(selected.token, selected.roots[0].id, target);
   const imported = await recovery.import(selected.token, JSON.stringify(await recovery.targets(selected.token)));
@@ -97,9 +97,9 @@ test('legacy backups need explicit claim; claim copies ownership without changin
   const folder = path.join(old.engine.directory('steam:1'), m.id);
   const original = JSON.parse(await fs.readFile(path.join(folder, 'manifest.json'), 'utf8')); delete original.account;
   const bytes = JSON.stringify(original, null, 2); await fs.writeFile(path.join(folder, 'manifest.json'), bytes); await fs.writeFile(path.join(folder, 'COMPLETE'), digest(bytes));
-  const fresh = await f.controller('new', A), recovery = new ProfileRecovery(fresh);
+  const fresh = await f.controller('new', A), recovery = new ProfileRecovery(fresh, 'steam:1');
   const list = await recovery.listLocal(f.destination); assert.equal(list.sources[0].ownership, 'legacy');
-  const s = (await recovery.select(list.sources[0].token, 'steam:1')).selection;
+  const s = (await recovery.select(list.sources[0].token)).selection;
   await recovery.map(s.token, s.roots[0].id, path.join(f.directory, 'target'));
   const confirmed = JSON.stringify(await recovery.targets(s.token));
   await assert.rejects(recovery.import(s.token, confirmed), /Konfirmasi penautan/);
@@ -114,10 +114,10 @@ test('Hydra logout/account switch invalidates source selections, controller oper
   const c = await f.controller('profile', A, () => current), m = await f.version(c), sync = await f.cloud(c);
   await sync.enqueue(c.engine, 'steam:1', m.id);
   const job = sync.state.jobs[0]; assert.ok(job.accountKey);
-  const recovery = new ProfileRecovery(c), list = await recovery.listLocal(f.destination);
+  const recovery = new ProfileRecovery(c, 'steam:1'), list = await recovery.listLocal(f.destination);
   current = B;
   await assert.rejects(c.backup('steam:1'), /Profil Hydra berubah/);
-  await assert.rejects(recovery.select(list.sources[0].token, 'steam:1'), /Profil Hydra berubah/);
+  await assert.rejects(recovery.select(list.sources[0].token), /Profil Hydra berubah/);
   await assert.rejects(sync.run(), /Profil Hydra berubah/);
   current = null;
   await assert.rejects(sync.begin(clientId), /Profil Hydra berubah/);

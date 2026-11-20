@@ -253,12 +253,13 @@ export class OneDrive {
   }
   // Read-only inventory across profiles. Recognize only our named game/device
   // folders, with fixed depth; never traverse arbitrary OneDrive directories.
-  async listProfiles() {
+  async listProfiles(gameHash) {
     const root = await this.children(ROOT);
     const groups = [{ base: ROOT, entries: root, title: 'Backup lama', device: '' }];
     let folders = 0;
     for (const game of root) {
       if (!game.folder || typeof game.name !== 'string' || !/ \[[a-f0-9]{12}\]$/.test(game.name)) continue;
+      if (gameHash && !game.name.endsWith(` [${gameHash.slice(0, 12)}]`)) continue;
       if (++folders > 500) throw new Error('Terlalu banyak folder backup. Persempit sumber pemulihan.');
       for (const device of await this.children(itemBase(game))) {
         if (!device.folder || typeof device.name !== 'string' || !/ \[[a-f0-9-]{36}\]$/.test(device.name)) continue;
@@ -268,7 +269,7 @@ export class OneDrive {
     }
     const result = [], seen = new Set();
     for (const group of groups) for (const item of group.entries) {
-      if (!storageName(item.name)) continue;
+      if (!storageName(item.name) || (gameHash && !item.name.startsWith(`${gameHash}_`))) continue;
       if (seen.has(item.name)) throw new Error('File backup ganda ditemukan. Periksa folder aplikasi OneDrive.');
       seen.add(item.name);
       if (seen.size > 40000) throw new Error('Terlalu banyak file backup. Persempit sumber pemulihan.');

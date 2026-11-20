@@ -7,6 +7,13 @@ import { unpackBundle, readSharedIndex, materializeShared, validateValue, valida
 
 const id = value => typeof value === 'string' && /^[a-zA-Z0-9_-]{1,100}$/.test(value) && !value.startsWith('_');
 const missing = error => { if (error.code === 'ENOENT') return []; throw error; };
+const overlaps = (a, b) => {
+  const contains = (parent, child) => {
+    const relative = path.relative(parent, child);
+    return !relative || (relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative));
+  };
+  return contains(a, b) || contains(b, a);
+};
 const fingerprint = m => digest(JSON.stringify({ roots: m.roots, files: m.files }));
 // Keep only metadata between user steps, never a whole cloud save in memory.
 const selectionValue = value => ({ schema: value.schema, manifest: value.manifest, ...(value.local ? { local: value.local } : {}) });
@@ -14,7 +21,11 @@ const selectionValue = value => ({ schema: value.schema, manifest: value.manifes
 // Each renderer-visible ID is an opaque, session-only capability. Paths, source
 // manifests and account identity remain in the main process.
 export class ProfileRecovery {
-  constructor(controller) { this.controller = controller; this.sources = new Map(); }
+  constructor(controller, gameId) {
+    this.controller = controller;
+    this.gameId = gameId;
+    this.reset();
+  }
   ownership(manifest, driveId) {
     this.controller.assertAccount?.();
     if (!this.controller.getAccount) return 'legacy';
@@ -22,21 +33,70 @@ export class ProfileRecovery {
   }
   snapshot() {
     this.controller.assertAccount?.();
-    return { sources: [...this.sources].map(([token, source]) => ({ token, ownership: source.ownership, title: source.title, deviceId: source.deviceId, createdAt: source.createdAt, gameId: source.gameId, source: source.cloud ? 'onedrive' : 'local' })).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))),
+    const visible = this.gameId ? this.sources.keys() : this.profiles.get(this.profileToken)?.sources ?? [];
+    const sources = [...visible].map(token => {
+      const { ownership, title, deviceId, createdAt, gameId, cloud } = this.sources.get(token);
+      return { token, ownership, title, deviceId, createdAt, gameId, source: cloud ? 'onedrive' : 'local', restorable: this.library.has(gameId) };
+    }).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    const profiles = [...this.profiles].map(([token, { deviceId, name, source, createdAt, games }]) => (
+      { token, deviceId, name, source, createdAt, gameCount: games.size }
+    )).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    return { profiles, profileToken: this.profileToken, sources,
       selection: this.selection ? { token: this.selection.token, ownership: this.selection.ownership, gameId: this.selection.gameId, title: this.selection.source.title, targetTitle: this.selection.gameTitle, sourceGameId: this.selection.value.manifest.gameId, deviceId: this.selection.source.deviceId, createdAt: this.selection.value.manifest.createdAt,
         roots: this.selection.value.manifest.roots.map(root => ({ id: root.id, kind: root.kind, files: this.selection.value.manifest.files.filter(f => f.rootId === root.id).length, samples: this.selection.value.manifest.files.filter(f => f.rootId === root.id).slice(0, 3).map(f => f.relative), originalPath: this.selection.source.locations?.[root.id] || '', target: this.selection.mapping[root.id] || '' })) } : null };
   }
-  reset() { this.sources.clear(); this.selection = undefined; }
+  reset() {
+    this.sources = new Map();
+    this.library = new Map();
+    this.profiles = new Map();
+    this.profileToken = undefined;
+    this.selection = undefined;
+    return this.sources;
+  }
+  finishListing(scan, sources, library) {
+    this.controller.assertAccount?.();
+    if (this.sources !== scan) throw new Error('Pencarian backup sudah berubah.');
+    this.library = library;
+    this.sources = sources;
+    if (!this.gameId) {
+      const profiles = new Map();
+      for (const [token, source] of sources) {
+        let profile = profiles.get(source.deviceId);
+        if (!profile) {
+          profile = { deviceId: source.deviceId, name: '', source: source.cloud ? 'onedrive' : 'local', createdAt: source.createdAt, games: new Set(), sources: new Set() };
+          profiles.set(source.deviceId, profile);
+          this.profiles.set(randomUUID(), profile);
+        }
+        if (source.deviceName) profile.name = source.deviceName;
+        if (source.createdAt > profile.createdAt) profile.createdAt = source.createdAt;
+        profile.games.add(source.gameId);
+        profile.sources.add(token);
+      }
+    }
+    return this.snapshot();
+  }
+  details(token) {
+    this.controller.assertAccount?.();
+    if (this.gameId || (token !== undefined && !this.profiles.has(token))) throw new Error('Pilih ulang profil lama.');
+    this.profileToken = token;
+    this.selection = undefined;
+    return this.snapshot();
+  }
+  visible(token) {
+    return this.gameId ? this.sources.get(token)?.gameId === this.gameId : this.profiles.get(this.profileToken)?.sources.has(token);
+  }
   async listLocal(destination) {
-    this.reset();
+    const scan = this.reset(), sources = new Map();
+    const library = new Map((await this.controller.getGames()).map(game => [game.id, game]));
+    const gameHash = this.gameId && digest(this.gameId);
     const base = path.join(await safePath(destination), 'HydraPersonalBackup');
     await safePath(base);
     let inspected = 0;
     const entries = async folder => { await safePath(folder); return fs.readdir(folder, { withFileTypes: true }).catch(missing); };
     for (const device of await entries(base)) {
-      if (!device.isDirectory() || !id(device.name)) continue;
+      if (!device.isDirectory() || !id(device.name) || (!this.gameId && device.name === this.controller.state.deviceId)) continue;
       for (const game of await entries(path.join(base, device.name))) {
-        if (!game.isDirectory() || !/^[a-f0-9]{64}$/.test(game.name)) continue;
+        if (!game.isDirectory() || !/^[a-f0-9]{64}$/.test(game.name) || (gameHash && game.name !== gameHash)) continue;
         const directory = path.join(base, device.name, game.name);
         let title = '', locations = {};
         // Display hint only, never trusted for selecting a game or destination.
@@ -50,41 +110,45 @@ export class ProfileRecovery {
             for (const name of ['manifest.json', 'COMPLETE']) { await safePath(path.join(folder, name)); if ((await fs.stat(path.join(folder, name))).size > 8 * 1024 ** 2) throw new Error('Metadata terlalu besar.'); }
             const bytes = await fs.readFile(path.join(folder, 'manifest.json'), 'utf8');
             const m = JSON.parse(bytes);
-            if (digest(bytes) !== await fs.readFile(path.join(folder, 'COMPLETE'), 'utf8') || m.id !== version.name || m.deviceId !== device.name || typeof m.gameId !== 'string' || digest(m.gameId) !== game.name || !Number.isFinite(Date.parse(m.createdAt))) continue;
+            if (digest(bytes) !== await fs.readFile(path.join(folder, 'COMPLETE'), 'utf8') || m.id !== version.name || m.deviceId !== device.name || typeof m.gameId !== 'string' || digest(m.gameId) !== game.name || typeof m.createdAt !== 'string' || !Number.isFinite(Date.parse(m.createdAt))) continue;
             const ownership = this.ownership(m);
             if (ownership === 'different') continue;
-            this.sources.set(randomUUID(), { ownership, destination, deviceId: m.deviceId, gameId: m.gameId, versionId: m.id, signature: digest(bytes), createdAt: m.createdAt, title: title || m.gameId, locations });
+            sources.set(randomUUID(), { ownership, destination, deviceId: m.deviceId, gameId: m.gameId, versionId: m.id, signature: digest(bytes), createdAt: m.createdAt, title: library.get(m.gameId)?.title || title || m.gameId, locations });
           } catch { /* Incomplete versions are not selectable. Full validation follows selection. */ }
         }
       }
     }
-    return this.snapshot();
+    return this.finishListing(scan, sources, library);
   }
   async listCloud(cloud) {
-    this.reset();
+    const scan = this.reset(), sources = new Map();
+    const library = new Map((await this.controller.getGames()).map(game => [game.id, game]));
+    const gameHash = this.gameId && digest(this.gameId);
     cloud.assertBinding?.();
     if (!cloud.connected || !cloud.state.driveId) throw new Error('Hubungkan OneDrive terlebih dahulu.');
     const driveId = cloud.state.driveId;
     if (await cloud.provider.identity() !== driveId) throw new Error('Akun OneDrive berubah. Hubungkan ulang.');
-    const items = await cloud.provider.listProfiles();
+    const items = await cloud.provider.listProfiles(gameHash);
     if (!cloud.connected || cloud.state.driveId !== driveId) throw new Error('Akun OneDrive berubah.');
+    let inspected = 0;
     for (const item of items) {
-      if (this.sources.size >= 5000) throw new Error('Terlalu banyak versi cloud.');
+      if (gameHash && !item.name.startsWith(`${gameHash}_`)) continue;
+      if (++inspected > 5000) throw new Error('Terlalu banyak versi cloud.');
       const bytes = await cloud.provider.download(item.name);
       if (bytes.length > BUNDLE_LIMIT || digest(bytes) !== item.name.slice(-68, -4)) continue;
       let manifest;
       try { manifest = bytes[0] === 0x1f ? (await unpackBundle(bytes)).manifest : readSharedIndex(bytes).manifest; }
       catch { continue; }
-      if (!manifest || !Number.isFinite(Date.parse(manifest.createdAt))) continue;
+      if (!manifest || typeof manifest.gameId !== 'string' || !id(manifest.deviceId) || typeof manifest.createdAt !== 'string' || !Number.isFinite(Date.parse(manifest.createdAt))) continue;
       if (!item.name.startsWith(`${digest(manifest.gameId)}_${manifest.deviceId}_${manifest.id}_`)) continue;
+      if (this.gameId ? manifest.gameId !== this.gameId : manifest.deviceId === this.controller.state.deviceId) continue;
       const ownership = this.ownership(manifest, driveId);
       if (ownership === 'different') continue;
-      const library = await this.controller.getGames();
-      const title = item.title === 'Backup lama' ? library.find(g => g.id === manifest.gameId)?.title || manifest.gameId : item.title;
-      this.sources.set(randomUUID(), { ownership, gameId: manifest.gameId, cloud, driveId, name: item.name, deviceId: item.name.slice(65, 101), createdAt: manifest.createdAt, title: title || manifest.gameId, deviceName: item.device });
+      const title = library.get(manifest.gameId)?.title || (item.title === 'Backup lama' ? '' : item.title) || manifest.gameId;
+      sources.set(randomUUID(), { ownership, gameId: manifest.gameId, cloud, driveId, name: item.name, deviceId: manifest.deviceId, createdAt: manifest.createdAt, title, deviceName: item.device?.replace(/ \[.*\]$/, '') });
     }
     await this.checkCloud({ cloud, driveId });
-    return this.snapshot();
+    return this.finishListing(scan, sources, library);
   }
   async checkCloud(source) {
     const c = source.cloud;
@@ -115,13 +179,17 @@ export class ProfileRecovery {
     if (!manifest) throw new Error('Backup sumber rusak atau tidak lengkap.');
     return { schema: 1, manifest: portableManifest(manifest), local: { folder, compressed: manifest.compressed ?? [] } };
   }
-  async select(token, gameId) {
+  async select(token) {
+    const c = this.controller;
+    c.assertAccount?.();
     this.selection = undefined;
-    const source = this.sources.get(token), c = this.controller;
+    const source = this.visible(token) && this.sources.get(token);
+    if (!source) throw new Error('Pilih sumber backup yang tersedia.');
+    const { gameId } = source;
     const game = (await c.getGames()).find(g => g.id === gameId);
-    if (!source || !game || !c.engine) throw new Error('Pilih sumber, game di pustaka, dan folder backup lokal terlebih dahulu.');
+    if (!game || !c.engine) throw new Error('Game yang sama harus tersedia di pustaka dan folder backup lokal harus dipilih.');
     const value = await this.sourceValue(source), m = value.manifest;
-    if (!m || !id(m.deviceId) || typeof m.gameId !== 'string' || !Array.isArray(m.roots) || !m.roots.length || m.roots.length > 100) throw new Error('Metadata profil lama tidak valid.');
+    if (!m || !id(m.deviceId) || m.gameId !== gameId || !Array.isArray(m.roots) || !m.roots.length || m.roots.length > 100) throw new Error('Metadata profil lama tidak valid.');
     // Validate foreign manifest BEFORE rewriting identity or fingerprint. Virtual
     // roots only validate relative paths; foreign absolute paths are never used.
     const ownership = this.ownership(m, source.cloud ? source.driveId : undefined);
@@ -130,6 +198,7 @@ export class ProfileRecovery {
     const virtual = m.roots.map((r, i) => ({ id: r.id, kind: r.kind, path: path.join(path.dirname(c.stateDirectory), `hydra-validation-${randomUUID()}`, String(i)) }));
     if (value.local) await validateManifest(sourceEngine, m.gameId, virtual, m, { local: true });
     else await validateValue(sourceEngine, m.gameId, virtual, value);
+    if (!this.visible(token)) throw new Error('Pilih ulang backup lama.');
     this.selection = { token: randomUUID(), gameId, gameTitle: game.title, ownership, source, value: selectionValue(value), mapping: {}, engine: c.engine, config: JSON.stringify(c.state.games[gameId] ?? null) };
     return this.snapshot();
   }
@@ -141,7 +210,8 @@ export class ProfileRecovery {
   async map(token, rootId, target) {
     const s = this.current(token);
     if (!s.value.manifest.roots.some(r => r.id === rootId)) throw new Error('Lokasi sumber tidak valid.');
-    s.mapping[rootId] = await safePath(target);
+    const resolved = await safePath(target);
+    this.current(token).mapping[rootId] = resolved;
     return this.snapshot();
   }
   async targets(token) {
@@ -158,9 +228,10 @@ export class ProfileRecovery {
     }
     await this.controller.engine.validate(roots);
     // Never allow recovery targets to contain or overwrite the source backup.
-    const overlaps = (a, b) => { const relative = path.relative(a, b); return !relative || (!relative.startsWith('..' + path.sep) && relative !== '..' && !path.isAbsolute(relative)); };
     const protectedPaths = [this.controller.stateDirectory, ...(s.source.destination ? [path.join(path.resolve(s.source.destination), 'HydraPersonalBackup')] : [])];
-    if (roots.some(r => protectedPaths.some(p => overlaps(r.path, p) || overlaps(p, r.path)))) throw new Error('Lokasi tujuan bertumpuk dengan backup sumber atau data modul.');
+    if (roots.some(r => protectedPaths.some(p => overlaps(r.path, p)))) throw new Error('Lokasi tujuan bertumpuk dengan backup sumber atau data modul.');
+    const otherRoots = Object.entries(this.controller.state.games).flatMap(([gameId, config]) => gameId === s.gameId ? [] : config.roots);
+    if (roots.some(root => otherRoots.some(other => overlaps(root.path, other.path)))) throw new Error('Lokasi tujuan bertumpuk dengan lokasi save game lain.');
     if (!(await this.controller.getGames()).some(g => g.id === s.gameId)) throw new Error('Game tidak tersedia di pustaka.');
     return roots;
   }
@@ -188,7 +259,8 @@ export class ProfileRecovery {
       return manifest.id;
     } finally { await fs.rm(stage, { recursive: true, force: true }); }
   }
-  async import(token, confirmedTargets, claimLegacy = false) {
+  async import(token, confirmedTargets, claimLegacy = false, { restore = false } = {}) {
+    const gameId = this.current(token).gameId;
     return this.controller.control(async () => {
       const s = this.current(token), c = this.controller;
       if (c.getAccount && s.ownership === 'legacy' && !claimLegacy) throw new Error('Backup lama belum memiliki pemilik. Konfirmasi penautan ke profil Hydra aktif diperlukan.');
@@ -211,7 +283,8 @@ export class ProfileRecovery {
       await c.save();
       c.lastScan.delete(s.gameId);
       this.selection = undefined;
+      if (restore) await c.restoreInternal(s.gameId, versionId, true);
       return { gameId: s.gameId, versionId };
-    }, 'profile-import', this.selection?.gameId);
+    }, restore ? 'restore' : 'profile-import', gameId);
   }
 }

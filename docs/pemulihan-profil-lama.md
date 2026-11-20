@@ -1,6 +1,6 @@
 # Pemulihan dari profil atau perangkat lama
 
-Status: tersedia pada installer 0.3.9. Pemulihan tetap dipilih dan dikonfirmasi pengguna, tanpa restore otomatis saat startup.
+Pemulihan dimulai dari Settings atau halaman game dan memerlukan konfirmasi pengguna.
 
 Login akun Hydra yang sama dan hubungkan OneDrive yang sama agar [identitas pemilik backup cocok](pencocokan-akun.md). Backup tanpa metadata pemilik memerlukan konfirmasi penautan manual.
 
@@ -8,15 +8,15 @@ Profil Windows/Hydra lama boleh hilang, selama folder backup atau paket OneDrive
 
 ## Cara memakai
 
-1. Tambahkan game ke pustaka Hydra baru dan atur executable `.exe`. Game Steam maupun kustom didukung; ID game kustom boleh berbeda dari profil lama.
+1. Tambahkan game ke pustaka Hydra baru dan atur executable `.exe`. Game Steam dan game kustom dapat dipulihkan jika ID game di pustaka saat ini sama dengan ID di backup.
 2. Pilih folder backup lokal di **Settings → Personal Cloud Backup**. Untuk sumber OneDrive, hubungkan akun Microsoft pemilik backup lama.
-3. Buka halaman game → **Pulihkan dari perangkat/profil lama**.
-4. Pilih **Cari backup di folder lama**, lalu pilih folder induk yang berisi `HydraPersonalBackup`; atau pilih **Cari backup akun ini di OneDrive**. Hydra membaca folder datar lama maupun folder nama game/perangkat. Daftar dapat memuat game lain, sehingga pastikan game sumber sesuai.
-5. Pilih versi berdasarkan game, perangkat dan tanggal. Isi diperiksa sebelum pilihan lokasi tujuan ditampilkan.
+3. Buka **Pulihkan dari perangkat/profil lama** dari halaman game atau **Settings → Personal Cloud Backup**.
+4. Pilih **Cari backup di folder lama**, lalu pilih folder induk yang berisi `HydraPersonalBackup`; atau pilih **Cari backup akun ini di OneDrive**. Halaman game hanya menampilkan backup game tersebut. Settings mengelompokkan backup berdasarkan ID profil perangkat lama.
+5. Dari Settings, tekan **Lihat detail profil** untuk melihat daftar game. Game tanpa ID yang cocok di pustaka hanya tampil sebagai informasi. Pilih versi untuk game yang ingin dipulihkan.
 6. Pilih tujuan untuk **setiap** lokasi save. Nama pengguna Windows dan lokasi drive boleh berbeda. File tunggal memakai dialog nama/lokasi file; folder memakai dialog folder yang dapat dibuat melalui pemilih. Contoh nama file dan ID lokasi membantu pencocokan. Bila `_INFO GAME.txt` lokal tersedia, lokasi lama ditampilkan sebagai keterangan; keterangan ini tidak digunakan sebagai tujuan otomatis. Paket lama berisi file tunggal mungkin tidak menyimpan nama/path aslinya, sehingga perlu dicocokkan manual.
 7. Tutup game, tekan **Pulihkan versi ini**, periksa game serta seluruh tujuan pada dialog konfirmasi, lalu pilih **Pulihkan**.
 
-File tambahan pada lokasi save tujuan diganti sesuai versi yang dipilih. Gunakan lokasi khusus save game. Hydra membuat backup pengaman kondisi tujuan sebelum mengganti save. Backup yang sudah mencatat pemilik akun lain tidak ditawarkan. Backup lama tanpa pemilik memerlukan tombol konfirmasi **Tautkan dan pulihkan**. Backup sumber tidak dipindahkan, diubah identitasnya, atau dihapus. Versi impor di profil baru mengikuti aturan retensi profil baru, sedangkan versi pengaman tetap dilindungi.
+Pemulihan hanya menyentuh lokasi tujuan untuk game terpilih. Lokasi yang bertumpuk dengan save game lain yang sudah dikonfigurasi ditolak. File dengan nama dan lokasi yang sama dipulihkan dari versi lama. File tambahan tetap tersedia. Gunakan lokasi khusus save game. Hydra membuat backup pengaman kondisi tujuan sebelum mengganti save. Backup yang sudah mencatat pemilik akun lain tidak ditawarkan. Backup lama tanpa pemilik memerlukan tombol konfirmasi **Tautkan dan pulihkan**. Backup sumber tidak dipindahkan, diubah identitasnya, atau dihapus. Versi impor di profil baru mengikuti aturan retensi profil baru, sedangkan versi pengaman tetap dilindungi.
 
 Jika import selesai tetapi restore gagal, versi impor tetap ada di **Pulihkan** biasa. Tutup proses game atau perbaiki masalah yang dilaporkan, lalu coba versi tersebut lagi. Jika operasi penggantian terputus, gunakan **Tangani pemulihan** yang sudah tersedia; jangan hapus journal atau file pengaman.
 
@@ -27,10 +27,10 @@ Jika import selesai tetapi restore gagal, versi impor tetap ada di **Pulihkan** 
 - Pemulihan memakai penguncian peluncuran Hydra, pemeriksaan proses game, backup pengaman, staging dan journal yang sama dengan restore biasa.
 - Sumber OneDrive diikat ke akun asal. Pergantian akun membatalkan pemulihan. Paket `.hpb` baru tetap memerlukan blob `.hpd` yang dirujuknya. Batas OneDrive tetap 128 MiB isi save/10.000 file per versi, paket 192 MiB.
 - Backup lokal disalin dan diverifikasi lewat streaming, tanpa batas ukuran paket OneDrive. Metadata lokal dibatasi 8 MiB per versi, maksimal 100 lokasi dan 5.000 versi per pencarian. Pencarian OneDrive dibatasi 500 folder dan 40.000 file pada tata folder aplikasi yang dikenali; tidak menelusuri seluruh drive.
-- Ini pemulihan satu versi yang dipilih, tanpa penggabungan progres atau sinkronisasi konflik antar-PC.
+- Ini pemulihan satu versi yang dipilih, dengan penggantian pada tingkat file. Isi dua versi dari file yang sama tidak digabung.
 
 ## Bukti pengujian
 
-Tes lokal mencakup profil lama dan save asli yang sudah dihapus, identitas baru, lokasi baru yang belum ada, game kustom dengan ID berbeda, beberapa root, file tunggal, backup pengaman dan pemulihannya, data rusak, traversal, akun berubah, tujuan berubah, proses game aktif, serta backup lokal di atas 128 MiB. Pengujian Graph simulasi menemukan folder profil lama dan paket datar tanpa membuat folder sumber. Handler IPC diuji untuk pemilih native, pembatalan, konfirmasi dan penerusan ke restore berpengaman.
+Tes lokal mencakup profil lama dan save asli yang sudah dihapus, identitas baru, lokasi baru yang belum ada, penolakan game kustom dengan ID berbeda, perlindungan save dan riwayat game lain, beberapa root, file tunggal, backup pengaman dan pemulihannya, data rusak, traversal, akun berubah, tujuan berubah, proses game aktif, serta backup lokal di atas 128 MiB. Pengujian Graph simulasi menemukan folder profil lama dan paket datar tanpa membuat folder sumber. Handler IPC diuji untuk pemilih native, pembatalan, konfirmasi dan penerusan ke restore berpengaman.
 
 Tes browser memakai data contoh pada dua ukuran jendela, termasuk pemetaan semua lokasi, pembatalan dan pembaruan riwayat. Pemeriksaan sintaks integrasi, tipe komponen React dan bundle modul utama dilakukan lokal. Build installer Windows, pemeriksaan tipe seluruh Hydra dan startup/tray Electron Windows lulus. Login akun Hydra/OneDrive nyata dan save pengguna belum diuji.

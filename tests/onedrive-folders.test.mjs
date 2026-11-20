@@ -277,6 +277,8 @@ test('read-only profile discovery finds old nested and legacy backups without cu
   const list = await reader.listProfiles();
   assert.deepEqual(new Set(list.map(item => item.name)), new Set([name, second, legacy]));
   assert.equal(list.find(item => item.name === name).title, 'Old Game');
+  assert.deepEqual((await reader.listProfiles(digest('steam:1'))).map(item => item.name), [name]);
+  assert.deepEqual((await reader.listProfiles(digest('steam:3'))).map(item => item.name), [legacy]);
   assert.equal((await reader.download(name)).toString(), 'old-profile');
   assert.equal((await reader.download(legacy)).toString(), 'legacy');
   assert.equal(f.entries.size, before, 'discovery/download never creates source folders');

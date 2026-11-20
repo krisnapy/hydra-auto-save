@@ -27,13 +27,13 @@ async function fixture(t) {
   const c = await new BackupController({ stateDirectory: path.join(dir, 'new-state'), stableMs: 1, getGames: async () => [{ id: 'steam:1', title: 'Game Test' }, { id: 'custom:new-id', title: 'New Custom Game' }], assertStopped: async () => {} }).init();
   t.after(() => c.stop());
   await c.configure({ destination: path.join(dir, 'new-backups') });
-  const recovery = new ProfileRecovery(c);
+  const recovery = new ProfileRecovery(c, 'steam:1');
   const listing = await recovery.listLocal(destination);
   assert.equal(listing.sources.length, 1);
   const token = listing.sources[0].token;
   const target = path.join(dir, 'new-user', 'saves');
-  const select = async (gameId = 'steam:1') => {
-    const selected = await recovery.select(token, gameId);
+  const select = async () => {
+    const selected = await recovery.select(token);
     const s = selected.selection;
     await recovery.map(s.token, s.roots[0].id, target);
     return s.token;
@@ -58,22 +58,60 @@ test('lost profile restores to new identity and missing save path; original back
   assert.equal(history.find(v => v.id === imported.versionId).origin.deviceId, f.old.deviceId);
 });
 
-test('custom game can be mapped explicitly to new library ID, preserving current save as safety backup', async t => {
+test('settings list old profiles first, show unmatched games only in details, and preserve saves of other current games', async t => {
   const f = await fixture(t);
+  const legacySave = path.join(f.dir, 'legacy-custom.sav');
+  const newSave = path.join(f.dir, 'new-custom.sav');
+  await fs.writeFile(legacySave, 'old-only progress');
+  await fs.writeFile(newSave, 'new-only progress');
+  await f.old.backup('custom:old-id', await makeRoots([{ path: legacySave }]));
+  await f.c.manual('custom:new-id', [{ path: newSave }]);
+  await f.c.configure({ destination: f.destination });
+  await f.c.backup('custom:new-id');
+
+  const recovery = new ProfileRecovery(f.c);
+  const listing = await recovery.listLocal(f.destination);
+  assert.equal(listing.profiles.length, 1);
+  assert.equal(listing.profiles[0].gameCount, 2);
+  assert.deepEqual(listing.sources, []);
+  assert.deepEqual((await f.recovery.listLocal(f.destination)).sources.map(source => source.gameId), ['steam:1']);
+  const details = recovery.details(listing.profiles[0].token);
+  const unmatched = details.sources.find(source => source.gameId === 'custom:old-id');
+  const matched = details.sources.find(source => source.gameId === 'steam:1');
+  assert.equal(unmatched.restorable, false);
+  await assert.rejects(recovery.select(unmatched.token), /Game yang sama/);
+  recovery.details();
+  await assert.rejects(recovery.select(matched.token), /Pilih sumber/);
+  recovery.details(listing.profiles[0].token);
+
+  const selected = (await recovery.select(matched.token)).selection;
+  const rootId = selected.roots[0].id;
+  await recovery.map(selected.token, rootId, f.dir);
+  await assert.rejects(recovery.targets(selected.token), /terpisah/);
+  const shared = path.join(f.dir, 'shared');
+  await fs.mkdir(shared);
+  const nestedSave = path.join(shared, 'other-game.sav');
+  await fs.writeFile(nestedSave, 'other-game progress');
+  await f.c.manual('custom:new-id', [{ path: newSave }, { path: nestedSave }]);
+  await recovery.map(selected.token, rootId, shared);
+  await assert.rejects(recovery.targets(selected.token), /save game lain/);
+  await recovery.map(selected.token, rootId, f.target);
   await fs.mkdir(f.target, { recursive: true });
-  await fs.writeFile(path.join(f.target, 'slot.sav'), 'new progress');
-  const key = await f.select('custom:new-id');
-  const imported = await f.publish(key);
-  const result = await f.c.restore(imported.gameId, imported.versionId, true);
+  await fs.writeFile(path.join(f.target, 'slot.sav'), 'same slot on new profile');
+  await fs.writeFile(path.join(f.target, 'extra-slot.sav'), 'new slot');
+  const before = await f.c.engine.versions('custom:new-id', { fresh: true });
+  await recovery.import(selected.token, JSON.stringify(await recovery.targets(selected.token)), false, { restore: true });
   assert.equal(await fs.readFile(path.join(f.target, 'slot.sav'), 'utf8'), 'old progress');
-  await f.c.restore(imported.gameId, result.safety, true);
-  assert.equal(await fs.readFile(path.join(f.target, 'slot.sav'), 'utf8'), 'new progress');
+  assert.equal(await fs.readFile(path.join(f.target, 'extra-slot.sav'), 'utf8'), 'new slot');
+  assert.equal(await fs.readFile(newSave, 'utf8'), 'new-only progress');
+  assert.equal(await fs.readFile(nestedSave, 'utf8'), 'other-game progress');
+  assert.deepEqual(await f.c.engine.versions('custom:new-id', { fresh: true }), before);
 });
 
 test('missing mapping, forged token, changed configuration and changed confirmed targets cannot publish', async t => {
   const f = await fixture(t);
-  await assert.rejects(f.recovery.select('forged', 'steam:1'), /Pilih sumber/);
-  const selected = (await f.recovery.select(f.token, 'steam:1')).selection;
+  await assert.rejects(f.recovery.select('forged'), /Pilih sumber/);
+  const selected = (await f.recovery.select(f.token)).selection;
   await assert.rejects(f.recovery.targets(selected.token), /setiap lokasi/);
   await f.recovery.map(selected.token, selected.roots[0].id, f.target);
   const confirmed = JSON.stringify(await f.recovery.targets(selected.token));
@@ -119,15 +157,19 @@ for (const shared of [false, true]) test(`OneDrive old profile recovery validate
   const index = bundle ? bundle.index : packed;
   const name = `${digest('steam:1')}_${f.old.deviceId}_${f.manifest.id}_${digest(index)}.hpb`;
   const remote = new Map([[name, index]]);
+  const unrelated = `${digest('steam:2')}_${f.old.deviceId}_${f.manifest.id}_${digest(index)}.hpb`;
   if (bundle) for (const object of bundle.value.objects) remote.set(sharedObjectName(bundle.value.manifest, object), bundle.objects.get(object.storedHash));
   let account = 'drive-A';
   const cloud = { connected: true, stopped: false, state: { driveId: 'drive-A' }, provider: {
     identity: async () => account,
-    listProfiles: async () => [{ name, title: 'Game Test', lastModifiedDateTime: value.manifest.createdAt }],
-    download: async name => remote.get(name),
+    listProfiles: async hash => {
+      assert.equal(hash, digest('steam:1'));
+      return [{ name: unrelated }, { name, title: 'Game Test', lastModifiedDateTime: value.manifest.createdAt }];
+    },
+    download: async name => { assert.notEqual(name, unrelated); return remote.get(name); },
   } };
   const list = await f.recovery.listCloud(cloud);
-  const selected = (await f.recovery.select(list.sources[0].token, 'steam:1')).selection;
+  const selected = (await f.recovery.select(list.sources[0].token)).selection;
   await f.recovery.map(selected.token, selected.roots[0].id, f.target);
   account = 'drive-B';
   await assert.rejects(f.publish(selected.token), /Akun OneDrive berubah/);
@@ -158,7 +200,7 @@ test('multiple roots require explicit mapping and support missing individual fil
   const m = await f.old.backup('steam:1', roots);
   const listing = await f.recovery.listLocal(f.destination);
   const source = listing.sources.find(s => s.createdAt === m.createdAt);
-  const s = (await f.recovery.select(source.token, 'steam:1')).selection;
+  const s = (await f.recovery.select(source.token)).selection;
   for (const root of s.roots) await f.recovery.map(s.token, root.id, root.kind === 'file' ? path.join(f.dir, 'new-single.sav') : f.target);
   const imported = await f.publish(s.token);
   await f.c.restore(imported.gameId, imported.versionId, true);
@@ -172,9 +214,9 @@ test('local recovery streams saves larger than OneDrive limit without bundling t
   const size = 128 * 1024 ** 2 + 1;
   const file = await fs.open(large, 'w'); await file.truncate(size); await file.close();
   const roots = await makeRoots([{ path: large }]);
-  const m = await f.old.backup('custom:large', roots);
+  const m = await f.old.backup('steam:1', roots);
   const list = await f.recovery.listLocal(f.destination);
-  const selected = (await f.recovery.select(list.sources.find(s => s.gameId === 'custom:large').token, 'custom:new-id')).selection;
+  const selected = (await f.recovery.select(list.sources.find(s => s.createdAt === m.createdAt).token)).selection;
   const target = path.join(f.dir, 'restored-large.sav');
   await f.recovery.map(selected.token, selected.roots[0].id, target);
   const imported = await f.publish(selected.token);
@@ -186,12 +228,30 @@ test('local recovery streams saves larger than OneDrive limit without bundling t
 test('running game blocks restore, keeps import available for retry, and leaves current save untouched', async t => {
   const f = await fixture(t), key = await f.select();
   await fs.mkdir(f.target, { recursive: true }); await fs.writeFile(path.join(f.target, 'slot.sav'), 'current');
-  const imported = await f.publish(key);
+  const confirmed = JSON.stringify(await f.recovery.targets(key));
   f.c.engine.assertStopped = async () => { throw new Error('Game masih berjalan.'); };
-  await assert.rejects(f.c.restore(imported.gameId, imported.versionId, true), /masih berjalan/);
+  await assert.rejects(f.recovery.import(key, confirmed, false, { restore: true }), /masih berjalan/);
   assert.equal(await fs.readFile(path.join(f.target, 'slot.sav'), 'utf8'), 'current');
-  assert.ok((await f.c.engine.versions(imported.gameId)).some(v => v.id === imported.versionId));
+  const imported = (await f.c.engine.versions('steam:1')).find(v => v.reason === 'profile-recovery');
+  assert.ok(imported);
   f.c.engine.assertStopped = async () => {};
-  await f.c.restore(imported.gameId, imported.versionId, true);
+  await f.c.restore('steam:1', imported.id, true);
   assert.equal(await fs.readFile(path.join(f.target, 'slot.sav'), 'utf8'), 'old progress');
+});
+
+test('interrupted profile restore verifies both restored and preserved saves before clearing the journal', async t => {
+  const f = await fixture(t), key = await f.select();
+  await fs.mkdir(f.target, { recursive: true });
+  const extra = path.join(f.target, 'new-slot.sav');
+  await fs.writeFile(extra, 'new save');
+  const confirmed = JSON.stringify(await f.recovery.targets(key));
+  f.c.engine.onProgress = (_, phase) => {
+    if (phase === 'restore-cleanup') throw new Error('interrupted after commit');
+  };
+  await assert.rejects(f.recovery.import(key, confirmed, false, { restore: true }), /interrupted after commit/);
+  assert.equal((await f.c.engine.recovery('steam:1')).committed, true);
+  await f.c.recover('steam:1');
+  assert.equal(await f.c.engine.recovery('steam:1'), null);
+  assert.equal(await fs.readFile(path.join(f.target, 'slot.sav'), 'utf8'), 'old progress');
+  assert.equal(await fs.readFile(extra, 'utf8'), 'new save');
 });

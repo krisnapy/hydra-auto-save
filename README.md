@@ -1,8 +1,10 @@
-# Hydra Personal Cloud Backup — 0.3.9
+# Hydra Personal Cloud Backup — 0.3.10
 
 Implementasi awal modul backup untuk salinan kode **Hydra Launcher 4.3.0 di Windows**. Tersedia installer dan aplikasi portable Windows x64 dengan runtime serta Ludusavi bawaan. Build, pemeriksaan tipe seluruh Hydra, dan uji membuka aplikasi/pengaturan backup di Windows telah berhasil. Pengujian game nyata dan penyedia cloud masih diperlukan.
 
 Draft awal tetap tersedia di [docs/rancangan-auto-backup.md](docs/rancangan-auto-backup.md). Keputusan implementasi awal dan batas verifikasi tercatat di [docs/implementasi.md](docs/implementasi.md). Tahapan berikutnya ada di [roadmap Personal Cloud](docs/roadmap-personal-cloud.md).
+
+Perubahan 0.3.10: pencarian backup di halaman game hanya menampilkan game aktif. Settings menampilkan profil lama terlebih dahulu dan menyediakan pemulihan per game dari detail profil. Restore mempertahankan slot tambahan dan melindungi lokasi save game lain. [Panduan pemulihan profil](docs/pemulihan-profil-lama.md).
 
 Prioritas 0.3.9: [pencocokan akun Hydra dan OneDrive](docs/pencocokan-akun.md). Backup baru mencatat identitas pemilik; profil, sesi dan antrean dipisahkan per akun Hydra. Pemulihan lintas perangkat memerlukan akun yang cocok, sedangkan backup lama tanpa pemilik ditautkan melalui konfirmasi.
 
@@ -24,7 +26,7 @@ Perubahan 0.3.2: [optimisasi alur dan ukuran backup](docs/optimisasi-penyimpanan
 
 ## Paket Windows tanpa Node.js
 
-**[Unduh setup 0.3.9](https://github.com/krisnapy/hydra-auto-save/releases/download/v0.3.9/Hydra-Personal-Backup-0.3.9-hydra-4.3.0-windows-x64-setup.exe)** (sekitar 208 MB) · [Portable, panduan dan checksum](https://github.com/krisnapy/hydra-auto-save/releases/tag/v0.3.9). Unduhan tidak memerlukan login GitHub. Rilis lama tetap dipertahankan. Build, checksum, pembukaan aplikasi/tray serta tampilan Windows telah lulus; lihat [laporan pengujian](docs/pengujian-tampilan.md).
+**[Unduh installer Windows x64 terbaru](https://github.com/krisnapy/hydra-auto-save/releases/latest)**. Halaman rilis menyediakan setup, portable, panduan, dan checksum. Unduhan publik tidak memerlukan login GitHub.
 
 0.3.1 memperbaiki alamat login OneDrive dengan mengikuti respons Microsoft, menyusun Personal Cloud menjadi satu kolom, serta menyembunyikan input Client ID. Tombol Hubungkan OneDrive memakai konfigurasi bawaan/tersimpan.
 

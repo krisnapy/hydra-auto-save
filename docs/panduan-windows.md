@@ -110,4 +110,4 @@ Pesan penolakan menyertakan hostname bila formatnya aman, tanpa path/query/tanda
 
 ## Restore setelah install ulang Windows
 
-Installer 0.3.9 menyediakan **Pulihkan dari perangkat/profil lama** di halaman game. Pilih folder backup lama atau akun OneDrive, pilih versi, petakan semua lokasi save ke profil baru, lalu konfirmasi. Backup sumber tetap tersimpan. Profil lama tidak perlu ada. [Panduan lengkap dan batas verifikasi](pemulihan-profil-lama.md).
+Buka **Pulihkan dari perangkat/profil lama** di halaman game atau **Settings → Personal Cloud Backup**. Halaman game hanya menampilkan backup game aktif. Di Settings, pilih sumber lokal atau OneDrive, lalu buka detail profil. Pilih game dengan ID yang sama, pilih versi, petakan lokasi save, dan konfirmasi. File tambahan dan backup sumber tetap tersimpan. [Panduan lengkap dan batas verifikasi](pemulihan-profil-lama.md).

@@ -270,6 +270,7 @@ export function PersonalCloudBackup({ gameId }: { gameId?: string }) {
       </div>)}
       <BackupProgressPanel key={gameId ?? "all"} gameId={gameId} busy={busy} />
       {!gameId ? <>
+        <ProfileRecoveryPanel disabled={busy} onRestored={refresh} />
         {showGuide ? <div className="personal-backup__guide">
           <h4>Mulai backup pribadi</h4>
           <p>1. {snapshot.destination ? "✓ Folder tujuan dipilih" : "Pilih folder tujuan backup"}</p>

@@ -12,8 +12,9 @@ async function harness({ confirm = false, cancelled = false, failImport = false,
     snapshot: () => ({ sources: [], selection: { token: 'main-token', gameId: 'steam:1', ownership: legacy ? 'legacy' : 'matched', title: 'Old Game', targetTitle: 'New Game', deviceId: 'old-device', createdAt: '2026-11-19', roots } }),
     targets: async token => { assert.equal(token, 'main-token'); return roots; },
     listLocal: async dir => { calls.push(['local', dir]); return recovery.snapshot(); },
+    details: token => { calls.push(['details', token]); return recovery.snapshot(); },
+    select: async token => { calls.push(['select', token]); return recovery.snapshot(); },
     map: async (...args) => { calls.push(['map', ...args]); return recovery.snapshot(); },
-    import: async (...args) => { calls.push(['import', ...args]); if (failImport) throw new Error('changed targets'); return { gameId: 'steam:1', versionId: 'imported-version' }; },
   };
   const modules = {
     'node:path': {}, 'node:fs/promises': {},
@@ -25,7 +26,11 @@ async function harness({ confirm = false, cancelled = false, failImport = false,
     './register-event': { registerEvent: (_, callback) => { handler = callback; } },
     './epic/assert-trusted-sender': { assertTrustedEpicSender: event => { if (!event.trusted) throw new Error('untrusted'); } },
     '../services/window-manager': { WindowManager: { mainWindow: {} } },
-    '../services/personal-cloud-backup': { getPersonalBackup: async () => ({}), getProfileRecovery: async () => recovery, restorePersonalBackup: async (...args) => calls.push(['restore', ...args]) },
+    '../services/personal-cloud-backup': { getPersonalBackup: async () => ({}), getProfileRecovery: async () => recovery, restoreOldProfileBackup: async (session, ...args) => {
+      assert.equal(session, recovery);
+      calls.push(['guarded-restore', ...args]);
+      if (failImport) throw new Error('changed targets');
+    } },
     '../services/personal-cloud-backup/onedrive': {},
   };
   const source = await readFile(new URL('../integration/overlay/src/main/events/personal-cloud-backup.ts', import.meta.url), 'utf8');
@@ -33,7 +38,7 @@ async function harness({ confirm = false, cancelled = false, failImport = false,
   return { calls, dialogs, roots, invoke: request => handler({ trusted: true }, { action: 'profile-recovery', gameId: 'steam:1', ...request }), handler };
 }
 
-test('old profile restore requires native confirmation and imports only the confirmed server targets before guarded restore', async () => {
+test('old profile restore requires native confirmation and passes only confirmed server targets to guarded restore', async () => {
   const cancelled = await harness();
   await cancelled.invoke({ command: 'restore', token: 'main-token', targets: ['forged'] });
   assert.deepEqual(cancelled.calls, []);
@@ -41,13 +46,12 @@ test('old profile restore requires native confirmation and imports only the conf
   const h = await harness({ confirm: true });
   await assert.rejects(h.invoke({ command: 'restore', token: 'main-token', gameId: 'forged-game' }), /Game tujuan berubah/);
   const result = await h.invoke({ command: 'restore', token: 'main-token', gameId: 'steam:1', versionId: 'forged-version' });
-  assert.deepEqual(h.calls, [['import', 'main-token', JSON.stringify(h.roots), false], ['restore', 'steam:1', 'imported-version']]);
+  assert.deepEqual(h.calls, [['guarded-restore', 'steam:1', 'main-token', JSON.stringify(h.roots), false]]);
   assert.match(h.dialogs[0].message, /Old Game.*New Game/);
   assert.match(h.dialogs[0].detail, /C:\/new-user\/slot.sav/);
   assert.match(result.notice, /berhasil/);
   const failed = await harness({ confirm: true, failImport: true });
   await assert.rejects(failed.invoke({ command: 'restore', token: 'main-token' }), /changed targets/);
-  assert.ok(!failed.calls.some(c => c[0] === 'restore'));
 });
 
 test('source and target paths come from native pickers; cancellation and untrusted senders cannot map or restore', async () => {
@@ -69,5 +73,16 @@ test('unowned backup is linked only through explicit native claim confirmation',
   await h.invoke({ command: 'restore', token: 'main-token' });
   assert.equal(h.dialogs[0].buttons[1], 'Tautkan dan pulihkan');
   assert.match(h.dialogs[0].detail, /belum mencatat pemilik/);
-  assert.equal(h.calls[0][3], true);
+  assert.equal(h.calls[0][4], true);
+});
+
+test('settings opens profile details and restores the matching game resolved by the main process', async () => {
+  const h = await harness({ confirm: true });
+  await h.invoke({ command: 'details', gameId: undefined, token: 'profile' });
+  await h.invoke({ command: 'select', gameId: undefined, token: 'backup', targetGameId: 'other-game' });
+  await h.invoke({ command: 'restore', gameId: undefined, token: 'main-token', targetGameId: 'other-game' });
+  assert.deepEqual(h.calls, [
+    ['details', 'profile'], ['select', 'backup'],
+    ['guarded-restore', 'steam:1', 'main-token', JSON.stringify(h.roots), false],
+  ]);
 });
